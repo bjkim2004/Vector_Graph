@@ -1,0 +1,716 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neo4j Aura Cypher 실습</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: sticky step rail on the left, one reading column of numbered lab steps; code blocks are dark "console" panes in both themes. */
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --ink: #16202a;
+  --muted: #5a6573;
+  --line: #dbe1e7;
+  --accent: #0a7c76;
+  --accent-soft: #e2f2f0;
+  --warn: #9a5b00;
+  --warn-soft: #fbf1df;
+  --code-bg: #121920;
+  --code-fg: #e4ebf1;
+  --code-muted: #7d8b99;
+  --tk-k: #7cc7ff;
+  --tk-s: #f2c37a;
+  --tk-l: #8fe3b4;
+  --tk-n: #f59a8c;
+  --tk-f: #d7a8ff;
+  --n-person: #d9722b;
+  --n-team: #3767cf;
+  --n-skill: #23936a;
+  --n-project: #9a47bb;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "D2Coding", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1418; --surface: #161d23; --ink: #e3e9ee; --muted: #9aa6b2; --line: #28323b;
+    --accent: #3cc2b9; --accent-soft: #123532; --warn: #f0b259; --warn-soft: #33270f;
+    --code-bg: #0a0f13; --code-fg: #e4ebf1; --code-muted: #7d8b99;
+    --n-person: #f08b44; --n-team: #6f97ef; --n-skill: #44c08f; --n-project: #c27ae0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1418; --surface: #161d23; --ink: #e3e9ee; --muted: #9aa6b2; --line: #28323b;
+  --accent: #3cc2b9; --accent-soft: #123532; --warn: #f0b259; --warn-soft: #33270f;
+  --code-bg: #0a0f13; --code-fg: #e4ebf1; --code-muted: #7d8b99;
+  --n-person: #f08b44; --n-team: #6f97ef; --n-skill: #44c08f; --n-project: #c27ae0;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15.5px; line-height: 1.7; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 32px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 48px; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.3; margin: 0; }
+p { margin: 0; }
+code { font-family: var(--font-mono); font-size: 0.9em; background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+a { color: var(--accent); }
+
+/* rail */
+.rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; display: flex; flex-direction: column; gap: 14px; }
+.rail .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.rail ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rail a { display: grid; grid-template-columns: 26px 1fr; gap: 6px; align-items: baseline; text-decoration: none; color: var(--muted); font-size: 13.5px; padding: 4px 8px; border-radius: 6px; }
+.rail a:hover { background: var(--surface); color: var(--ink); }
+.rail a .no { font-family: var(--font-mono); font-size: 12px; }
+.rail a.done .no::before { content: "✓"; color: var(--accent); font-weight: 700; }
+.rail a.done .no span { display: none; }
+#progressText { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* hero */
+main { min-width: 0; display: flex; flex-direction: column; gap: 56px; }
+.hero { display: flex; flex-direction: column; gap: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); padding-block-end: 32px; }
+.hero h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; letter-spacing: -0.01em; }
+.hero .lede { font-size: 17px; color: var(--muted); max-width: 62ch; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13.5px; color: var(--muted); }
+.meta b { color: var(--ink); font-weight: 500; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12.5px; padding: 2px 9px 2px 7px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.chip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--muted)); }
+
+/* steps */
+section.step { display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 20px; }
+.step-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.step-no { font-family: var(--font-mono); font-size: 13px; color: var(--accent); font-weight: 500; letter-spacing: .04em; }
+.step-head h2 { font-size: 24px; font-weight: 700; flex: 1 1 260px; }
+.done-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
+.done-toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+.goal { font-size: 15px; color: var(--muted); max-width: 70ch; }
+.goal strong { color: var(--ink); font-weight: 500; }
+.body { display: flex; flex-direction: column; gap: 14px; max-width: 76ch; }
+.body ol, .body ul { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; }
+h3 { font-size: 16.5px; font-weight: 700; margin-top: 8px; }
+
+/* code */
+.code { background: var(--code-bg); color: var(--code-fg); border-radius: 10px; overflow: hidden; max-width: 100%; }
+.code-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 10px 7px 14px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 12px; color: var(--code-muted); font-family: var(--font-mono); }
+.copy { font: inherit; font-size: 12px; color: var(--code-fg); background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.copy:hover { background: rgba(255,255,255,.16); }
+.copy:focus-visible, .rail a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+pre.cy { margin: 0; padding: 14px 16px; overflow-x: auto; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.6; white-space: pre; tab-size: 2; }
+.t-k { color: var(--tk-k); font-weight: 500; } .t-s { color: var(--tk-s); } .t-l { color: var(--tk-l); } .t-n { color: var(--tk-n); } .t-f { color: var(--tk-f); } .t-c { color: var(--code-muted); font-style: italic; }
+
+/* result + notes */
+.result { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 16px; font-size: 14.5px; display: flex; flex-direction: column; gap: 8px; }
+.result .lab { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; min-width: 100%; }
+th, td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-family: var(--font-mono); font-size: 12.5px; }
+tr:last-child td { border-bottom: 0; }
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14.5px; }
+.note.warn { border-color: var(--warn); background: var(--warn-soft); }
+.note b { font-weight: 700; }
+details.answer { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 14px; background: var(--surface); }
+details.answer summary { cursor: pointer; color: var(--accent); font-weight: 500; font-size: 14px; }
+details.answer[open] summary { margin-bottom: 10px; }
+details.answer > div { display: flex; flex-direction: column; gap: 10px; }
+.ex { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.ex:first-of-type { border-top: 0; padding-top: 0; }
+.ex p.q { font-weight: 500; }
+.ex p.q span { font-family: var(--font-mono); color: var(--accent); margin-right: 8px; }
+
+/* model figure */
+figure.shot { margin: 0; display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
+figure.shot img { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+figure.shot.narrow img { max-width: min(100%, 420px); }
+figure.shot figcaption { font-size: 13px; color: var(--muted); }
+.cap-tag { font-family: var(--font-mono); font-size: 11px; color: var(--accent); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-right: 8px; }
+.shot-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; align-items: start; }
+figure.model { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; overflow-x: auto; }
+figure.model svg { display: block; width: 100%; min-width: 520px; height: auto; }
+figure.model figcaption { font-size: 13px; color: var(--muted); padding: 6px 4px 0; }
+.edge { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+.arrowhead { fill: var(--muted); }
+.elabel { fill: var(--ink); font-family: var(--font-mono); font-size: 11.5px; }
+.elabel tspan.prop { fill: var(--muted); }
+.nlabel { fill: #ffffff; font-family: var(--font-mono); font-size: 13px; font-weight: 500; }
+.ncount { fill: #ffffff; font-family: var(--font-body); font-size: 11px; opacity: .9; }
+
+.ui-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.ui-map div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.ui-map b { font-size: 14.5px; }
+kbd { font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--surface); }
+
+@media (max-width: 900px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .rail { position: static; }
+  .rail ol { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .rail a { grid-template-columns: auto; padding: 3px 9px; border: 1px solid var(--line); background: var(--surface); }
+  .rail a .t { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } html { scroll-behavior: auto; } }
+html { scroll-behavior: smooth; }
+</style>
+
+<div class="wrap">
+  <nav class="rail" aria-label="실습 단계">
+    <span class="eyebrow">진행률</span>
+    <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+    <span id="progressText">0 / 14 단계 완료</span>
+    <ol id="railList"></ol>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <span class="step-no">HANDS-ON LAB · NEO4J AURA QUERY</span>
+      <h1>Neo4j Aura Cypher 실습</h1>
+      <p class="lede">Aura 콘솔의 Query 화면에서 사내 인재·기술 그래프를 직접 만들고, 조회·집계·추천·경로 탐색까지 단계별로 따라 하는 실습 자료입니다. 각 단계의 코드를 복사해 실행하고, 예상 결과와 비교하며 진행하세요.</p>
+      <div class="meta">
+        <span><b>소요 시간</b> 약 90~120분</span>
+        <span><b>대상</b> Cypher 처음 접하는 개발자·분석가</span>
+        <span><b>준비물</b> AuraDB 인스턴스(Free 가능) 접속 정보</span>
+        <span><b>검증</b> 모든 쿼리를 실제 Aura 인스턴스에서 실행해 결과 확인(2026-11-07)</span>
+      </div>
+      <div class="chips" aria-label="실습 데이터 라벨">
+        <span class="chip" style="--c: var(--n-person)">Person 8</span>
+        <span class="chip" style="--c: var(--n-team)">Team 3</span>
+        <span class="chip" style="--c: var(--n-skill)">Skill 7</span>
+        <span class="chip" style="--c: var(--n-project)">Project 3</span>
+        <span class="chip">관계 51개</span>
+      </div>
+    </header>
+
+    <!-- STEP 00 -->
+    <section class="step" id="s00" data-title="시작 전 준비">
+      <div class="step-head"><span class="step-no">STEP 00</span><h2>시작 전 준비: Query 화면에 연결하기</h2></div>
+      <p class="goal"><strong>목표</strong> Aura 콘솔에서 인스턴스에 연결하고, 실습해도 되는 빈 데이터베이스인지 확인합니다.</p>
+      <div class="body">
+        <ol>
+          <li><a href="https://console.neo4j.io/projects/41ba1575-8c77-477d-9083-97c5a6e800d3/studio/query" target="_blank" rel="noopener">Aura 콘솔 Query 화면</a>에 로그인합니다.</li>
+          <li>화면 상단(또는 연결 패널)에서 실습할 <b>인스턴스</b>를 선택합니다. 인스턴스가 <b>Paused</b> 상태라면 Instances 메뉴에서 먼저 <b>Resume</b> 합니다. Free 인스턴스는 한동안 쓰지 않으면 자동으로 일시정지됩니다.</li>
+          <li>접속 정보를 입력합니다. 사용자명은 보통 <code>neo4j</code>, 비밀번호는 인스턴스를 만들 때 내려받은 <code>Neo4j-xxxx-Created-....txt</code> 파일에 있습니다.</li>
+          <li>연결되면 에디터에 아래 쿼리를 붙여 넣고 실행합니다.</li>
+        </ol>
+      </div>
+      <figure class="shot narrow"><img src="img/s00_instance.png" width="272" height="244" alt="Query 화면 상단 Instance 메뉴. Status connected, Protocol neo4j+s" loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>상단의 Instance 이름을 누르면 연결 상태를 확인할 수 있습니다. Status가 connected면 준비 완료입니다.</figcaption></figure>
+      <div class="code"><div class="code-top"><span>00-1 · 데이터 개수 확인</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (n) RETURN count(n) AS nodeCount;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p><code>nodeCount</code> = <b>0</b>. 0이 아니면 다른 데이터가 들어 있는 인스턴스입니다.</p></div>
+      <div class="note warn"><b>주의</b> STEP 13(정리)에서는 데이터베이스의 모든 노드를 지웁니다. 업무 데이터가 있는 인스턴스에서는 실습하지 말고, 실습 전용 인스턴스를 새로 만드세요.</div>
+    </section>
+
+    <!-- STEP 01 -->
+    <section class="step" id="s01" data-title="Query 화면 둘러보기">
+      <div class="step-head"><span class="step-no">STEP 01</span><h2>Query 화면 둘러보기</h2></div>
+      <p class="goal"><strong>목표</strong> 쿼리를 입력·실행하고 결과를 그래프와 표로 바꿔 보는 방법을 익힙니다.</p>
+      <div class="ui-map">
+        <div><b>쿼리 에디터</b><span>Cypher를 입력하는 곳. <kbd>Ctrl</kbd>+<kbd>Enter</kbd>(Mac은 <kbd>⌘</kbd>+<kbd>Enter</kbd>) 또는 실행(▶) 버튼으로 실행합니다.</span></div>
+        <div><b>결과 카드</b><span>실행할 때마다 카드가 하나씩 쌓입니다. 노드·관계를 반환하면 Graph, 값을 반환하면 Table로 보입니다. 카드 상단에서 보기 방식을 바꿀 수 있습니다.</span></div>
+        <div><b>데이터베이스 정보</b><span>왼쪽 사이드바에 라벨·관계 유형·속성 키 목록이 나옵니다. 항목을 누르면 해당 데이터를 조회하는 쿼리가 자동으로 실행됩니다.</span></div>
+        <div><b>저장된 쿼리·기록</b><span>자주 쓰는 쿼리는 저장해 두고, 이전에 실행한 쿼리는 기록에서 다시 불러올 수 있습니다.</span></div>
+      </div>
+      <div class="code"><div class="code-top"><span>01-1 · 첫 실행</span><button class="copy" type="button">복사</button></div><pre class="cy">RETURN '안녕하세요, Neo4j!' AS greeting, datetime() AS now;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>Table 보기로 <code>greeting</code>과 현재 시각 <code>now</code> 한 행이 나옵니다.</p></div>
+      <div class="shot-row">
+        <figure class="shot"><img src="img/s01_editor.png" width="754" height="292" alt="상단 에디터에 RETURN 쿼리, 아래 결과 카드에 greeting과 now 한 행" loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>위: 쿼리 에디터와 Run 버튼. 아래: 실행할 때마다 쌓이는 결과 카드(Table / Raw 전환).</figcaption></figure>
+        <figure class="shot"><img src="img/s01_sidebar.png" width="400" height="336" alt="왼쪽 Database information 패널. Nodes 21, Relationships 51, Property keys" loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>왼쪽 사이드바의 Database information. 데이터를 넣은 뒤(STEP 05) 모습으로, 라벨·관계 유형·속성 키를 눌러 바로 조회할 수 있습니다.</figcaption></figure>
+      </div>
+      <div class="note"><b>팁</b> 세미콜론(<code>;</code>)으로 구분한 여러 문장을 한 번에 실행할 수 있습니다. 이때 결과 카드는 문장별 상태 목록(Results)으로 표시됩니다(STEP 04 화면 참고).</div>
+    </section>
+
+    <!-- STEP 02 -->
+    <section class="step" id="s02" data-title="그래프 기초와 첫 노드">
+      <div class="step-head"><span class="step-no">STEP 02</span><h2>그래프 기초와 첫 노드</h2></div>
+      <p class="goal"><strong>목표</strong> 노드·관계·라벨·속성의 개념을 잡고, 노드 하나를 만들고 조회하고 지워 봅니다.</p>
+      <div class="body">
+        <ul>
+          <li><b>노드(Node)</b>: 개체. 괄호로 씁니다. <code>(p:Person {name:'김하늘'})</code></li>
+          <li><b>라벨(Label)</b>: 노드의 종류. 콜론 뒤에 씁니다. <code>:Person</code>, <code>:Skill</code></li>
+          <li><b>관계(Relationship)</b>: 노드 사이의 연결. 방향과 유형이 있습니다. <code>-[:HAS_SKILL]-&gt;</code></li>
+          <li><b>속성(Property)</b>: 노드나 관계에 붙는 키-값. <code>{level: 5}</code></li>
+        </ul>
+        <p>Cypher는 이 모양을 그대로 그리듯 씁니다. <code>(사람)-[:보유]-&gt;(기술)</code> 같은 ASCII 그림이 곧 쿼리입니다.</p>
+      </div>
+      <div class="code"><div class="code-top"><span>02-1 · 노드 만들기</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE (n:Test {name: '첫 노드', createdAt: datetime()})
+RETURN n;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>Graph 보기에 노드 1개가 나타납니다. 노드를 클릭하면 속성(<code>name</code>, <code>createdAt</code>)을 볼 수 있습니다.</p></div>
+      <div class="code"><div class="code-top"><span>02-2 · 조회하기</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (n:Test)
+RETURN n.name AS name, n.createdAt AS createdAt;</pre></div>
+      <div class="code"><div class="code-top"><span>02-3 · 지우기</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (n:Test)
+DELETE n;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>반환값 없이 "1개 노드 삭제" 같은 요약이 표시됩니다. 02-2를 다시 실행하면 결과가 비어 있습니다.</p></div>
+    </section>
+
+    <!-- STEP 03 -->
+    <section class="step" id="s03" data-title="실습 데이터 모델">
+      <div class="step-head"><span class="step-no">STEP 03</span><h2>실습 데이터 모델 이해하기</h2></div>
+      <p class="goal"><strong>목표</strong> 이번 실습에서 만들 사내 인재·기술 그래프의 구조를 미리 봅니다. 모든 이름과 수치는 실습용 가상 데이터입니다.</p>
+      <figure class="model">
+        <svg viewBox="0 0 640 330" role="img" aria-label="Person, Team, Skill, Project 노드와 관계를 나타낸 데이터 모델">
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <!-- edges -->
+          <line class="edge" x1="256" y1="140" x2="136" y2="140" marker-end="url(#arr)"/>
+          <line class="edge" x1="344" y1="140" x2="494" y2="140" marker-end="url(#arr)"/>
+          <line class="edge" x1="325" y1="174" x2="393" y2="262" marker-end="url(#arr)"/>
+          <line class="edge" x1="447" y1="262" x2="514" y2="176" marker-end="url(#arr)"/>
+          <path class="edge" d="M 282 101 C 255 30, 345 30, 318 101" marker-end="url(#arr)"/>
+          <!-- edge labels -->
+          <text class="elabel" x="196" y="130" text-anchor="middle">WORKS_IN</text>
+          <text class="elabel" x="419" y="130" text-anchor="middle">HAS_SKILL <tspan class="prop">{level}</tspan></text>
+          <text class="elabel" x="348" y="232" text-anchor="end">WORKED_ON <tspan class="prop">{role}</tspan></text>
+          <text class="elabel" x="492" y="232" text-anchor="start">REQUIRES</text>
+          <text class="elabel" x="300" y="34" text-anchor="middle">REPORTS_TO</text>
+          <!-- nodes -->
+          <circle cx="300" cy="140" r="44" style="fill: var(--n-person)"/>
+          <text class="nlabel" x="300" y="138" text-anchor="middle">Person</text>
+          <text class="ncount" x="300" y="155" text-anchor="middle">id·name·title·years</text>
+          <circle cx="92" cy="140" r="44" style="fill: var(--n-team)"/>
+          <text class="nlabel" x="92" y="138" text-anchor="middle">Team</text>
+          <text class="ncount" x="92" y="155" text-anchor="middle">id·name</text>
+          <circle cx="538" cy="140" r="44" style="fill: var(--n-skill)"/>
+          <text class="nlabel" x="538" y="138" text-anchor="middle">Skill</text>
+          <text class="ncount" x="538" y="155" text-anchor="middle">name</text>
+          <circle cx="420" cy="290" r="36" style="fill: var(--n-project)"/>
+          <text class="nlabel" x="420" y="288" text-anchor="middle">Project</text>
+          <text class="ncount" x="420" y="304" text-anchor="middle">id·name·year</text>
+        </svg>
+        <figcaption>직원(Person)은 팀에 소속되고(WORKS_IN), 기술을 보유하며(HAS_SKILL, 숙련도 1~5), 프로젝트에 참여하고(WORKED_ON), 상급자에게 보고합니다(REPORTS_TO). 프로젝트는 필요한 기술을 가집니다(REQUIRES).</figcaption>
+      </figure>
+      <div class="tbl result"><span class="lab">실습 인물 요약</span>
+        <table>
+          <thead><tr><th>id</th><th>name</th><th>title</th><th>years</th><th>팀</th><th>보유 기술(숙련도)</th></tr></thead>
+          <tbody>
+            <tr><td>P01</td><td>김하늘</td><td>수석</td><td>12</td><td>데이터플랫폼팀</td><td>Spark 5 · SQL 5 · Python 4 · Kubernetes 3</td></tr>
+            <tr><td>P02</td><td>이준호</td><td>책임</td><td>8</td><td>데이터플랫폼팀</td><td>SQL 4 · Python 4 · Cypher 3</td></tr>
+            <tr><td>P03</td><td>박서연</td><td>선임</td><td>4</td><td>데이터플랫폼팀</td><td>Python 3 · Spark 3</td></tr>
+            <tr><td>P04</td><td>최민재</td><td>책임</td><td>9</td><td>AI서비스팀</td><td>Python 5 · LLM 5 · Kubernetes 3</td></tr>
+            <tr><td>P05</td><td>정유나</td><td>선임</td><td>5</td><td>AI서비스팀</td><td>Python 4 · LLM 4 · Cypher 4</td></tr>
+            <tr><td>P06</td><td>한지우</td><td>사원</td><td>2</td><td>AI서비스팀</td><td>Python 2 · LLM 2</td></tr>
+            <tr><td>P07</td><td>오세훈</td><td>수석</td><td>14</td><td>보안팀</td><td>보안진단 5 · Kubernetes 4</td></tr>
+            <tr><td>P08</td><td>윤가은</td><td>선임</td><td>6</td><td>보안팀</td><td>보안진단 4 · Python 3</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- STEP 04 -->
+    <section class="step" id="s04" data-title="제약조건 만들기">
+      <div class="step-head"><span class="step-no">STEP 04</span><h2>고유 제약조건 만들기</h2></div>
+      <p class="goal"><strong>목표</strong> id가 중복되지 않도록 제약조건을 먼저 만듭니다. 제약조건을 만들면 해당 속성에 인덱스도 함께 생겨 조회가 빨라집니다.</p>
+      <div class="code"><div class="code-top"><span>04-1 · 제약조건 4개</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.id IS UNIQUE;
+CREATE CONSTRAINT team_id IF NOT EXISTS FOR (t:Team) REQUIRE t.id IS UNIQUE;
+CREATE CONSTRAINT project_id IF NOT EXISTS FOR (pj:Project) REQUIRE pj.id IS UNIQUE;
+CREATE CONSTRAINT skill_name IF NOT EXISTS FOR (s:Skill) REQUIRE s.name IS UNIQUE;</pre></div>
+      <div class="code"><div class="code-top"><span>04-2 · 확인</span><button class="copy" type="button">복사</button></div><pre class="cy">SHOW CONSTRAINTS YIELD name, labelsOrTypes, properties
+RETURN name, labelsOrTypes, properties;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p><code>person_id</code>, <code>project_id</code>, <code>skill_name</code>, <code>team_id</code> 4개 행.</p></div>
+      <figure class="shot"><img src="img/s04_multi.png" width="1154" height="368" alt="04-1 네 문장을 한 번에 실행한 결과. Results 목록에 4개 문장 모두 성공 표시" loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>04-1을 한 번에 실행하면 문장별 성공 여부가 Results 목록으로 나옵니다. 각 행의 View results로 개별 결과를 볼 수 있습니다.</figcaption></figure>
+    </section>
+
+    <!-- STEP 05 -->
+    <section class="step" id="s05" data-title="데이터 적재">
+      <div class="step-head"><span class="step-no">STEP 05</span><h2>실습 데이터 적재하기</h2></div>
+      <p class="goal"><strong>목표</strong> <code>UNWIND</code>로 목록을 한 행씩 펼치고 <code>MERGE</code>로 노드·관계를 만듭니다. 05-1부터 순서대로 실행하세요.</p>
+      <div class="note"><b>MERGE와 CREATE의 차이</b> <code>CREATE</code>는 실행할 때마다 새로 만들고, <code>MERGE</code>는 같은 것이 있으면 재사용하고 없을 때만 만듭니다. 그래서 아래 블록은 실수로 두 번 실행해도 데이터가 중복되지 않습니다.</div>
+      <div class="code"><div class="code-top"><span>05-1 · 팀</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND [
+  {id: 'T1', name: '데이터플랫폼팀'},
+  {id: 'T2', name: 'AI서비스팀'},
+  {id: 'T3', name: '보안팀'}
+] AS row
+MERGE (t:Team {id: row.id})
+SET t.name = row.name
+RETURN count(t) AS teams;</pre></div>
+      <div class="code"><div class="code-top"><span>05-2 · 직원 + 소속(WORKS_IN)</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND [
+  {id: 'P01', name: '김하늘', title: '수석', years: 12, team: 'T1'},
+  {id: 'P02', name: '이준호', title: '책임', years: 8,  team: 'T1'},
+  {id: 'P03', name: '박서연', title: '선임', years: 4,  team: 'T1'},
+  {id: 'P04', name: '최민재', title: '책임', years: 9,  team: 'T2'},
+  {id: 'P05', name: '정유나', title: '선임', years: 5,  team: 'T2'},
+  {id: 'P06', name: '한지우', title: '사원', years: 2,  team: 'T2'},
+  {id: 'P07', name: '오세훈', title: '수석', years: 14, team: 'T3'},
+  {id: 'P08', name: '윤가은', title: '선임', years: 6,  team: 'T3'}
+] AS row
+MATCH (t:Team {id: row.team})
+MERGE (p:Person {id: row.id})
+SET p.name = row.name, p.title = row.title, p.years = row.years
+MERGE (p)-[:WORKS_IN]->(t)
+RETURN count(p) AS persons;</pre></div>
+      <div class="code"><div class="code-top"><span>05-3 · 기술 + 보유(HAS_SKILL)</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND [
+  ['P01', 'Spark', 5], ['P01', 'SQL', 5], ['P01', 'Python', 4], ['P01', 'Kubernetes', 3],
+  ['P02', 'SQL', 4], ['P02', 'Python', 4], ['P02', 'Cypher', 3],
+  ['P03', 'Python', 3], ['P03', 'Spark', 3],
+  ['P04', 'Python', 5], ['P04', 'LLM', 5], ['P04', 'Kubernetes', 3],
+  ['P05', 'Python', 4], ['P05', 'LLM', 4], ['P05', 'Cypher', 4],
+  ['P06', 'Python', 2], ['P06', 'LLM', 2],
+  ['P07', '보안진단', 5], ['P07', 'Kubernetes', 4],
+  ['P08', '보안진단', 4], ['P08', 'Python', 3]
+] AS row
+MATCH (p:Person {id: row[0]})
+MERGE (s:Skill {name: row[1]})
+MERGE (p)-[h:HAS_SKILL]->(s)
+SET h.level = row[2]
+RETURN count(h) AS skills;</pre></div>
+      <div class="code"><div class="code-top"><span>05-4 · 프로젝트 + 필요 기술(REQUIRES)</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND [
+  {id: 'PJ1', name: '고객360 지식그래프', year: 2026, requires: ['Cypher', 'Python', 'SQL']},
+  {id: 'PJ2', name: '사내 RAG 챗봇',      year: 2026, requires: ['LLM', 'Python', 'Kubernetes']},
+  {id: 'PJ3', name: '클라우드 보안점검',  year: 2025, requires: ['보안진단', 'Kubernetes']}
+] AS row
+MERGE (pj:Project {id: row.id})
+SET pj.name = row.name, pj.year = row.year
+WITH pj, row
+UNWIND row.requires AS skillName
+MATCH (s:Skill {name: skillName})
+MERGE (pj)-[:REQUIRES]->(s)
+RETURN count(*) AS requires;</pre></div>
+      <div class="code"><div class="code-top"><span>05-5 · 프로젝트 참여(WORKED_ON)</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND [
+  ['P02', 'PJ1', 'PL'], ['P03', 'PJ1', '개발'], ['P05', 'PJ1', '개발'],
+  ['P04', 'PJ2', 'PL'], ['P06', 'PJ2', '개발'], ['P01', 'PJ2', '데이터'],
+  ['P07', 'PJ3', 'PL'], ['P08', 'PJ3', '진단']
+] AS row
+MATCH (p:Person {id: row[0]}), (pj:Project {id: row[1]})
+MERGE (p)-[w:WORKED_ON]->(pj)
+SET w.role = row[2]
+RETURN count(w) AS workedOn;</pre></div>
+      <div class="code"><div class="code-top"><span>05-6 · 보고 체계(REPORTS_TO)</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND [['P02', 'P01'], ['P03', 'P01'], ['P04', 'P01'],
+        ['P05', 'P04'], ['P06', 'P05'], ['P08', 'P07']] AS row
+MATCH (a:Person {id: row[0]}), (b:Person {id: row[1]})
+MERGE (a)-[:REPORTS_TO]->(b)
+RETURN count(*) AS reportsTo;</pre></div>
+      <div class="result"><span class="lab">각 블록의 예상 결과</span><p>05-1 <code>teams</code> 3 · 05-2 <code>persons</code> 8 · 05-3 <code>skills</code> 21 · 05-4 <code>requires</code> 8 · 05-5 <code>workedOn</code> 8 · 05-6 <code>reportsTo</code> 6</p><p>05-5, 05-6에서 <code>03N90: Cartesian product</code> 알림이 보일 수 있습니다. 양쪽 노드를 고유 id로 하나씩만 찾기 때문에 이 경우는 무시해도 됩니다.</p></div>
+      <h3>적재 결과 검증</h3>
+      <div class="code"><div class="code-top"><span>05-7 · 라벨별 노드 수</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (n)
+RETURN labels(n)[0] AS label, count(*) AS cnt
+ORDER BY label;</pre></div>
+      <div class="code"><div class="code-top"><span>05-8 · 유형별 관계 수</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH ()-[r]->()
+RETURN type(r) AS relType, count(*) AS cnt
+ORDER BY relType;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span>
+        <div class="tbl"><table>
+          <thead><tr><th>label</th><th>cnt</th><th></th><th>relType</th><th>cnt</th></tr></thead>
+          <tbody>
+            <tr><td>Person</td><td>8</td><td></td><td>HAS_SKILL</td><td>21</td></tr>
+            <tr><td>Project</td><td>3</td><td></td><td>REPORTS_TO</td><td>6</td></tr>
+            <tr><td>Skill</td><td>7</td><td></td><td>REQUIRES</td><td>8</td></tr>
+            <tr><td>Team</td><td>3</td><td></td><td>WORKED_ON</td><td>8</td></tr>
+            <tr><td></td><td></td><td></td><td>WORKS_IN</td><td>8</td></tr>
+          </tbody>
+        </table></div>
+        <p>노드 21개, 관계 51개. 숫자가 다르면 STEP 13의 정리 쿼리로 비우고 05-1부터 다시 실행하세요.</p>
+      </div>
+      <div class="code"><div class="code-top"><span>05-9 · 전체 그래프 보기</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (n)-[r]->(m)
+RETURN n, r, m;</pre></div>
+      <figure class="shot"><img src="img/s05_graph.png" width="1114" height="615" alt="전체 그래프. 노드 21개, 관계 51개가 Graph 보기로 표시됨" loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>05-9 실행 결과. 오른쪽 위 문서 아이콘으로 Results overview(라벨·관계 개수)를 열고 닫을 수 있고, 오른쪽 아래 버튼으로 확대·맞춤 보기를 합니다.</figcaption></figure>
+      <div class="note"><b>관찰 포인트</b> Graph 보기에서 노드를 끌어 배치해 보고, 라벨별 색과 노드 캡션(표시 속성)을 <code>name</code>으로 바꿔 보세요. Python 노드에 연결선이 가장 많이 모이는 것이 보입니다.</div>
+    </section>
+
+    <!-- STEP 06 -->
+    <section class="step" id="s06" data-title="기본 조회">
+      <div class="step-head"><span class="step-no">STEP 06</span><h2>기본 조회: MATCH · WHERE · ORDER BY</h2></div>
+      <p class="goal"><strong>목표</strong> 조건으로 노드를 찾고, 원하는 속성만 골라 정렬합니다.</p>
+      <div class="code"><div class="code-top"><span>06-1 · 연차 순 직원 목록</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person)
+RETURN p.name AS name, p.title AS title, p.years AS years
+ORDER BY years DESC;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>8행. 첫 행 오세훈(14), 마지막 행 한지우(2).</p></div>
+      <div class="code"><div class="code-top"><span>06-2 · 조건 걸기</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person)
+WHERE p.years >= 8
+RETURN p.name AS name, p.years AS years
+ORDER BY years DESC;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>오세훈 14 · 김하늘 12 · 최민재 9 · 이준호 8 (4행)</p></div>
+      <div class="code"><div class="code-top"><span>06-3 · 목록 조건(IN)과 LIMIT</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person)
+WHERE p.title IN ['수석', '책임']
+RETURN p.name AS name, p.title AS title
+ORDER BY p.years DESC
+LIMIT 3;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>오세훈 수석 · 김하늘 수석 · 최민재 책임. <code>LIMIT</code>을 지우면 이준호까지 4행이 나옵니다.</p></div>
+      <div class="note"><b>팁</b> 같은 조건을 속성 맵으로 줄여 쓸 수 있습니다. <code>MATCH (p:Person {title: '수석'})</code>는 <code>WHERE p.title = '수석'</code>과 같습니다.</div>
+    </section>
+
+    <!-- STEP 07 -->
+    <section class="step" id="s07" data-title="관계 따라가기">
+      <div class="step-head"><span class="step-no">STEP 07</span><h2>관계 패턴 따라가기</h2></div>
+      <p class="goal"><strong>목표</strong> 화살표 패턴으로 연결된 데이터를 찾고, 관계에 붙은 속성으로 거릅니다. SQL의 JOIN을 패턴 하나로 대신합니다.</p>
+      <div class="code"><div class="code-top"><span>07-1 · 특정 팀 구성원</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person)-[:WORKS_IN]->(t:Team {name: 'AI서비스팀'})
+RETURN p.name AS name, p.title AS title;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>최민재 · 정유나 · 한지우</p></div>
+      <div class="code"><div class="code-top"><span>07-2 · 관계 속성으로 거르기</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person)-[h:HAS_SKILL]->(s:Skill {name: 'Python'})
+WHERE h.level >= 4
+RETURN p.name AS name, h.level AS level
+ORDER BY level DESC, name;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>최민재 5 · 김하늘 4 · 이준호 4 · 정유나 4</p></div>
+      <div class="code"><div class="code-top"><span>07-3 · 방향 뒤집기</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (boss:Person {name: '김하늘'})&lt;-[:REPORTS_TO]-(member:Person)
+RETURN member.name AS directReport;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>이준호 · 박서연 · 최민재. 화살표 방향이 "누가 누구에게 보고하는가"를 정합니다.</p></div>
+      <div class="code"><div class="code-top"><span>07-4 · 한 사람 주변 그래프</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person {name: '정유나'})-[r]-(x)
+RETURN p, r, x;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>Graph 보기에 관계 7개: 소속 팀, 기술 3개(Python·LLM·Cypher), 프로젝트 1개, 상급자 최민재, 그리고 정유나에게 보고하는 한지우. 방향 없이 <code>-[r]-</code>로 쓰면 들어오고 나가는 관계를 모두 찾습니다.</p></div>
+      <figure class="shot"><img src="img/s07_neighbor.png" width="1114" height="615" alt="정유나 노드를 중심으로 관계 7개가 연결된 그래프와 Results overview" loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>07-4 실행 결과. 오른쪽 Results overview에 관계 유형별 개수(HAS_SKILL 3, REPORTS_TO 2, WORKED_ON 1, WORKS_IN 1)가 표시됩니다.</figcaption></figure>
+    </section>
+
+    <!-- STEP 08 -->
+    <section class="step" id="s08" data-title="집계">
+      <div class="step-head"><span class="step-no">STEP 08</span><h2>집계: count · collect · avg</h2></div>
+      <p class="goal"><strong>목표</strong> 그룹별로 세고 모읍니다. Cypher에는 <code>GROUP BY</code>가 없고, <code>RETURN</code>에서 집계하지 않은 열이 자동으로 그룹 기준이 됩니다.</p>
+      <div class="code"><div class="code-top"><span>08-1 · 팀별 인원과 구성원</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (t:Team)&lt;-[:WORKS_IN]-(p:Person)
+RETURN t.name AS team, count(p) AS headcount, collect(p.name) AS members
+ORDER BY headcount DESC, team;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>AI서비스팀 3 · 데이터플랫폼팀 3 · 보안팀 2 (members는 이름 목록)</p></div>
+      <figure class="shot"><img src="img/s08_table.png" width="1130" height="281" alt="팀별 headcount와 members 목록 표" loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>08-1 실행 결과. 값만 반환하는 쿼리는 Graph 없이 Table로 바로 표시됩니다.</figcaption></figure>
+      <div class="code"><div class="code-top"><span>08-2 · 기술별 보유자 수</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (s:Skill)&lt;-[:HAS_SKILL]-(p:Person)
+RETURN s.name AS skill, count(p) AS holders
+ORDER BY holders DESC, skill;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>Python 7 · Kubernetes 3 · LLM 3 · Cypher 2 · SQL 2 · Spark 2 · 보안진단 2</p></div>
+      <div class="code"><div class="code-top"><span>08-3 · 팀별 평균 연차</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (t:Team)&lt;-[:WORKS_IN]-(p:Person)
+RETURN t.name AS team, round(avg(p.years), 1) AS avgYears
+ORDER BY avgYears DESC;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>보안팀 10.0 · 데이터플랫폼팀 8.0 · AI서비스팀 5.3</p></div>
+    </section>
+
+    <!-- STEP 09 -->
+    <section class="step" id="s09" data-title="다중 홉과 추천">
+      <div class="step-head"><span class="step-no">STEP 09</span><h2>여러 단계 건너기와 추천</h2></div>
+      <p class="goal"><strong>목표</strong> 두세 단계 떨어진 노드를 한 패턴으로 연결해, 동료 찾기와 인력 추천을 만들어 봅니다. 그래프 DB가 가장 빛나는 부분입니다.</p>
+      <div class="code"><div class="code-top"><span>09-1 · 같은 프로젝트 동료</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (me:Person {name: '박서연'})-[:WORKED_ON]->(pj:Project)&lt;-[:WORKED_ON]-(col:Person)
+RETURN pj.name AS project, collect(col.name) AS colleagues;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>고객360 지식그래프 · [이준호, 정유나]</p></div>
+      <div class="code"><div class="code-top"><span>09-2 · 프로젝트에 맞는 인력 추천</span><button class="copy" type="button">복사</button></div><pre class="cy">// PJ1에 필요한 기술을 가진 사람 중, 아직 PJ1에 참여하지 않은 사람
+MATCH (pj:Project {id: 'PJ1'})-[:REQUIRES]->(s:Skill)&lt;-[h:HAS_SKILL]-(p:Person)
+WHERE NOT (p)-[:WORKED_ON]->(pj)
+RETURN p.name AS candidate,
+       collect(s.name) AS matchedSkills,
+       count(s) AS matchCount,
+       sum(h.level) AS levelSum
+ORDER BY matchCount DESC, levelSum DESC;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>김하늘 [SQL, Python] 2 · 9 → 최민재 1 · 5 → 윤가은 1 · 3 → 한지우 1 · 2. 목록 안의 순서는 실행 환경에 따라 다를 수 있습니다.</p></div>
+      <figure class="shot"><img src="img/s09_table.png" width="1130" height="321" alt="추천 결과 표. 김하늘, 최민재, 윤가은, 한지우 4행" loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>09-2 실행 결과.</figcaption></figure>
+      <div class="code"><div class="code-top"><span>09-3 · 없는 관계도 0으로 세기(OPTIONAL MATCH)</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person)
+OPTIONAL MATCH (p)&lt;-[:REPORTS_TO]-(m:Person)
+RETURN p.name AS name, count(m) AS directReports
+ORDER BY directReports DESC, name;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>김하늘 3 · 오세훈 1 · 정유나 1 · 최민재 1 · 나머지 4명 0. <code>OPTIONAL MATCH</code> 대신 <code>MATCH</code>를 쓰면 부하 직원이 없는 4명이 결과에서 빠집니다. 직접 바꿔서 확인해 보세요.</p></div>
+    </section>
+
+    <!-- STEP 10 -->
+    <section class="step" id="s10" data-title="경로 탐색">
+      <div class="step-head"><span class="step-no">STEP 10</span><h2>경로 탐색: 가변 길이와 최단 경로</h2></div>
+      <p class="goal"><strong>목표</strong> 몇 단계인지 모르는 연결을 따라가고, 두 노드 사이의 최단 경로를 찾습니다.</p>
+      <div class="code"><div class="code-top"><span>10-1 · 보고 체계 끝까지 따라가기</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH path = (p:Person {name: '한지우'})-[:REPORTS_TO*1..]->(m:Person)
+RETURN [n IN nodes(path) | n.name] AS chain, length(path) AS hops
+ORDER BY hops;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>[한지우, 정유나] 1 · [한지우, 정유나, 최민재] 2 · [한지우, 정유나, 최민재, 김하늘] 3</p></div>
+      <div class="code"><div class="code-top"><span>10-2 · 두 사람 사이 최단 경로</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (a:Person {name: '한지우'}), (b:Person {name: '윤가은'})
+MATCH path = shortestPath((a)-[*..6]-(b))
+RETURN path;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>길이 2 경로: 한지우 → Python ← 윤가은. 팀도 프로젝트도 다르지만 공통 기술로 바로 연결됩니다.</p></div>
+      <figure class="shot"><img src="img/s10_path.png" width="1114" height="643" alt="한지우와 윤가은이 Python 노드로 연결된 최단 경로 그래프. 아래 03N90 Cartesian product 알림" loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>10-2 실행 결과. 아래쪽 03N90: Cartesian product 알림은 두 사람을 각각 하나씩 찾는 MATCH라서 나오는 것으로, 무시해도 됩니다.</figcaption></figure>
+      <div class="code"><div class="code-top"><span>10-3 · 관계 유형을 제한한 최단 경로</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (a:Person {name: '한지우'}), (b:Person {name: '윤가은'})
+MATCH path = shortestPath((a)-[:REPORTS_TO|WORKS_IN|WORKED_ON*..8]-(b))
+RETURN [n IN nodes(path) | coalesce(n.name, n.id)] AS route, length(path) AS hops;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p><b>결과가 비어 있습니다.</b> 윤가은은 보안팀·클라우드 보안점검·오세훈과만 연결되어 있고, 이 셋은 소속·프로젝트·보고 관계로 다른 팀과 이어지지 않습니다. 기술(HAS_SKILL)을 빼면 두 사람 사이에 경로가 없다는 뜻입니다. 빈 결과도 의미 있는 답입니다.</p></div>
+      <div class="note"><b>팁</b> <code>*1..</code>처럼 상한이 없는 가변 길이 패턴은 큰 그래프에서 매우 느려질 수 있습니다. 실무에서는 <code>*1..5</code>처럼 상한을 꼭 두세요.</div>
+    </section>
+
+    <!-- STEP 11 -->
+    <section class="step" id="s11" data-title="연습문제">
+      <div class="step-head"><span class="step-no">STEP 11</span><h2>연습문제</h2></div>
+      <p class="goal"><strong>목표</strong> 지금까지 배운 패턴을 조합해 직접 쿼리를 작성합니다. 먼저 풀어 보고 정답을 펼쳐 비교하세요.</p>
+      <div class="body">
+        <div class="ex">
+          <p class="q"><span>Q1</span>보안팀 구성원의 이름과 직급을 조회하세요.</p>
+          <details class="answer"><summary>정답 보기</summary><div>
+            <div class="code"><div class="code-top"><span>Q1 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person)-[:WORKS_IN]->(:Team {name: '보안팀'})
+RETURN p.name AS name, p.title AS title;</pre></div>
+            <p>오세훈 수석 · 윤가은 선임. 쓰지 않는 노드는 변수 없이 <code>(:Team)</code>처럼 써도 됩니다.</p>
+          </div></details>
+        </div>
+        <div class="ex">
+          <p class="q"><span>Q2</span>Kubernetes를 보유한 사람을 숙련도 높은 순으로 조회하세요.</p>
+          <details class="answer"><summary>정답 보기</summary><div>
+            <div class="code"><div class="code-top"><span>Q2 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person)-[h:HAS_SKILL]->(:Skill {name: 'Kubernetes'})
+RETURN p.name AS name, h.level AS level
+ORDER BY level DESC, name;</pre></div>
+            <p>오세훈 4 · 김하늘 3 · 최민재 3</p>
+          </div></details>
+        </div>
+        <div class="ex">
+          <p class="q"><span>Q3</span>프로젝트별 참여 인원 수와 PL 이름을 한 행에 보여 주세요.</p>
+          <details class="answer"><summary>정답 보기</summary><div>
+            <div class="code"><div class="code-top"><span>Q3 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (pj:Project)&lt;-[w:WORKED_ON]-(p:Person)
+RETURN pj.name AS project,
+       count(p) AS members,
+       collect(CASE WHEN w.role = 'PL' THEN p.name END)[0] AS pl
+ORDER BY project;</pre></div>
+            <p>고객360 지식그래프 3 이준호 · 사내 RAG 챗봇 3 최민재 · 클라우드 보안점검 2 오세훈. <code>collect</code>는 null을 빼고 모으므로 PL 이름만 남습니다.</p>
+          </div></details>
+        </div>
+        <div class="ex">
+          <p class="q"><span>Q4</span>정유나와 기술을 2개 이상 공유하는 사람과 공유 기술 목록을 찾으세요.</p>
+          <details class="answer"><summary>정답 보기</summary><div>
+            <div class="code"><div class="code-top"><span>Q4 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (a:Person {name: '정유나'})-[:HAS_SKILL]->(s:Skill)&lt;-[:HAS_SKILL]-(b:Person)
+WITH b, collect(s.name) AS shared
+WHERE size(shared) >= 2
+RETURN b.name AS name, shared
+ORDER BY name;</pre></div>
+            <p>이준호 [Python, Cypher] · 최민재 [Python, LLM] · 한지우 [Python, LLM]. 집계 결과로 거를 때는 <code>WITH</code> 다음에 <code>WHERE</code>를 씁니다(SQL의 HAVING 역할).</p>
+          </div></details>
+        </div>
+        <div class="ex">
+          <p class="q"><span>Q5</span>김하늘에게 직접 또는 간접으로 보고하는 모든 사람과 단계 수를 조회하세요.</p>
+          <details class="answer"><summary>정답 보기</summary><div>
+            <div class="code"><div class="code-top"><span>Q5 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH path = (m:Person)-[:REPORTS_TO*1..5]->(:Person {name: '김하늘'})
+RETURN m.name AS name, length(path) AS level
+ORDER BY level, name;</pre></div>
+            <p>박서연 1 · 이준호 1 · 최민재 1 · 정유나 2 · 한지우 3 (5명)</p>
+          </div></details>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 12 -->
+    <section class="step" id="s12" data-title="데이터 수정·삭제">
+      <div class="step-head"><span class="step-no">STEP 12</span><h2>데이터 수정과 삭제</h2></div>
+      <p class="goal"><strong>목표</strong> 속성을 바꾸고, MERGE의 ON CREATE / ON MATCH를 써 보고, 관계가 있는 노드를 안전하게 지웁니다. 이 단계부터는 데이터가 바뀌므로 앞 단계의 예상 결과와 달라질 수 있습니다.</p>
+      <div class="code"><div class="code-top"><span>12-1 · 속성 수정(SET)</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person {name: '한지우'})
+SET p.title = '선임', p.years = 3
+RETURN p.name AS name, p.title AS title, p.years AS years;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>한지우 · 선임 · 3</p></div>
+      <div class="code"><div class="code-top"><span>12-2 · 있으면 올리고 없으면 만들기</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person {name: '한지우'})
+MERGE (s:Skill {name: 'Cypher'})
+MERGE (p)-[h:HAS_SKILL]->(s)
+  ON CREATE SET h.level = 1
+  ON MATCH  SET h.level = h.level + 1
+RETURN p.name AS name, s.name AS skill, h.level AS level;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>처음 실행하면 level 1(관계 생성), 한 번 더 실행하면 level 2(기존 관계 갱신). 두 번 실행해서 차이를 확인하세요.</p></div>
+      <div class="code"><div class="code-top"><span>12-3 · 임시 직원 추가</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (t:Team {id: 'T1'})
+CREATE (p:Person {id: 'P99', name: '임시사원', title: '사원', years: 0})-[:WORKS_IN]->(t)
+RETURN p, t;</pre></div>
+      <div class="code"><div class="code-top"><span>12-4 · 그냥 지우기 (오류가 나는 것이 정상)</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person {id: 'P99'})
+DELETE p;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p><code>G1001: Dependent object error - edges still exist</code> 오류. Neo4j는 관계가 남아 있는 노드를 지우지 못하게 막습니다.</p></div>
+      <figure class="shot"><img src="img/s12_error.png" width="754" height="156" alt="DELETE 실행 결과로 G1001 Dependent object error - edges still exist 오류 표시" loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>12-4 실행 결과. 관계(WORKS_IN)가 남아 있어 삭제가 거부됩니다.</figcaption></figure>
+      <div class="code"><div class="code-top"><span>12-5 · 관계까지 함께 지우기</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (p:Person {id: 'P99'})
+DETACH DELETE p;</pre></div>
+      <div class="result"><span class="lab">예상 결과</span><p>노드 1개, 관계 1개 삭제. 05-7을 다시 실행하면 Person이 8명으로 돌아와 있습니다.</p></div>
+    </section>
+
+    <!-- STEP 13 -->
+    <section class="step" id="s13" data-title="정리와 요약">
+      <div class="step-head"><span class="step-no">STEP 13</span><h2>정리하기와 문법 요약</h2></div>
+      <p class="goal"><strong>목표</strong> 실습 데이터를 지우고, 오늘 쓴 문법을 한 번에 정리합니다. 데이터를 남겨 두고 더 연습하려면 정리 쿼리는 실행하지 않아도 됩니다.</p>
+      <div class="note warn"><b>되돌릴 수 없습니다</b> 13-1은 데이터베이스의 <b>모든</b> 노드와 관계를 지웁니다. 실습 전용 인스턴스인지 다시 확인하세요.</div>
+      <div class="code"><div class="code-top"><span>13-1 · 전체 데이터 삭제</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (n)
+DETACH DELETE n;</pre></div>
+      <div class="code"><div class="code-top"><span>13-2 · 제약조건 삭제</span><button class="copy" type="button">복사</button></div><pre class="cy">DROP CONSTRAINT person_id IF EXISTS;
+DROP CONSTRAINT team_id IF EXISTS;
+DROP CONSTRAINT project_id IF EXISTS;
+DROP CONSTRAINT skill_name IF EXISTS;</pre></div>
+      <h3>오늘 쓴 문법</h3>
+      <div class="tbl result">
+        <table>
+          <thead><tr><th>구문</th><th>하는 일</th><th>실습 단계</th></tr></thead>
+          <tbody>
+            <tr><td><code>CREATE</code></td><td>노드·관계를 무조건 새로 만든다</td><td>02, 12</td></tr>
+            <tr><td><code>MERGE</code></td><td>있으면 찾고 없으면 만든다 (ON CREATE / ON MATCH)</td><td>05, 12</td></tr>
+            <tr><td><code>UNWIND</code></td><td>목록을 행으로 펼친다</td><td>05</td></tr>
+            <tr><td><code>MATCH … WHERE</code></td><td>패턴과 조건으로 찾는다</td><td>06, 07</td></tr>
+            <tr><td><code>OPTIONAL MATCH</code></td><td>없으면 null로 채워 행을 남긴다</td><td>09</td></tr>
+            <tr><td><code>count · collect · avg · sum</code></td><td>집계한다 (집계 안 한 열이 그룹 기준)</td><td>08, 09</td></tr>
+            <tr><td><code>WITH</code></td><td>중간 결과를 다음 단계로 넘긴다 (집계 후 거르기)</td><td>05, 11</td></tr>
+            <tr><td><code>-[:TYPE*1..5]-&gt;</code></td><td>가변 길이 관계를 따라간다</td><td>10, 11</td></tr>
+            <tr><td><code>shortestPath()</code></td><td>두 노드 사이 최단 경로</td><td>10</td></tr>
+            <tr><td><code>SET · REMOVE</code></td><td>속성을 바꾸거나 지운다</td><td>12</td></tr>
+            <tr><td><code>DELETE · DETACH DELETE</code></td><td>노드를 지운다 (관계까지 함께)</td><td>12, 13</td></tr>
+            <tr><td><code>CREATE CONSTRAINT</code></td><td>고유값 보장 + 인덱스</td><td>04</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note"><b>더 해 볼 것</b> 09-2를 PJ2, PJ3로 바꿔 실행해 보세요. Skill 노드에 <code>category</code> 속성(언어·인프라·AI·보안)을 추가하고 분야별 보유자 수를 집계해 보는 것도 좋은 연습입니다.</div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  var KW = new Set("MATCH OPTIONAL CREATE MERGE SET REMOVE DELETE DETACH RETURN WITH UNWIND WHERE AND OR NOT IN AS ORDER BY DESC ASC LIMIT SKIP ON CONSTRAINT IF EXISTS FOR REQUIRE IS UNIQUE SHOW YIELD DROP CASE WHEN THEN ELSE END NULL DISTINCT CALL STARTS ENDS CONTAINS TRUE FALSE".split(" "));
+  var FN = new Set("count collect avg sum min max round size labels type nodes relationships length shortestPath datetime coalesce toUpper toLower".split(" "));
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function span(c, s) { return '<span class="t-' + c + '">' + esc(s) + "</span>"; }
+  function hl(src) {
+    var re = /(\/\/[^\n]*)|('(?:[^'\\]|\\.)*')|(:[A-Z][A-Za-z_]*)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+    var out = "", last = 0, m;
+    while ((m = re.exec(src))) {
+      out += esc(src.slice(last, m.index));
+      if (m[1]) out += span("c", m[1]);
+      else if (m[2]) out += span("s", m[2]);
+      else if (m[3]) out += span("l", m[3]);
+      else if (m[4]) out += span("n", m[4]);
+      else {
+        var w = m[5];
+        if (KW.has(w.toUpperCase()) && w === w.toUpperCase()) out += span("k", w);
+        else if (FN.has(w) && src.charAt(re.lastIndex) === "(") out += span("f", w);
+        else out += esc(w);
+      }
+      last = re.lastIndex;
+    }
+    return out + esc(src.slice(last));
+  }
+  document.querySelectorAll("pre.cy").forEach(function (pre) {
+    var raw = pre.textContent;
+    pre.dataset.raw = raw;
+    pre.innerHTML = hl(raw);
+  });
+  document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var pre = btn.closest(".code").querySelector("pre.cy");
+      var text = pre.dataset.raw;
+      function ok() { btn.textContent = "복사됨"; setTimeout(function () { btn.textContent = "복사"; }, 1400); }
+      function fallback() {
+        var r = document.createRange(); r.selectNodeContents(pre);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        btn.textContent = "Ctrl+C로 복사";
+        setTimeout(function () { btn.textContent = "복사"; }, 2200);
+      }
+      try {
+        navigator.clipboard.writeText(text).then(ok, fallback);
+      } catch (e) { fallback(); }
+    });
+  });
+
+  // progress
+  var KEY = "neo4j-aura-lab-done";
+  var done = {};
+  try { done = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { done = {}; }
+  var steps = Array.prototype.slice.call(document.querySelectorAll("section.step"));
+  var list = document.getElementById("railList");
+  steps.forEach(function (sec, i) {
+    var li = document.createElement("li");
+    var a = document.createElement("a");
+    a.href = "#" + sec.id;
+    a.innerHTML = '<span class="no"><span>' + String(i).padStart(2, "0") + '</span></span><span class="t">' + sec.dataset.title + "</span>";
+    li.appendChild(a); list.appendChild(li);
+    var label = document.createElement("label");
+    label.className = "done-toggle";
+    label.innerHTML = '<input type="checkbox" id="done-' + sec.id + '"> 완료';
+    sec.querySelector(".step-head").appendChild(label);
+    var cb = label.querySelector("input");
+    cb.checked = !!done[sec.id];
+    cb.addEventListener("change", function () {
+      done[sec.id] = cb.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(done)); } catch (e) {}
+      render();
+    });
+    sec._link = a;
+  });
+  function render() {
+    var n = 0;
+    steps.forEach(function (sec) { var d = !!done[sec.id]; if (d) n++; sec._link.classList.toggle("done", d); });
+    document.getElementById("barFill").style.width = (n / steps.length * 100) + "%";
+    document.getElementById("progressText").textContent = n + " / " + steps.length + " 단계 완료";
+  }
+  render();
+})();
+</script>
