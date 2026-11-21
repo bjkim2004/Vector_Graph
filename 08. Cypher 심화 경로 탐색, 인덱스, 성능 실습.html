@@ -1,0 +1,678 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Cypher 심화 실습: 경로 탐색 · 인덱스 · 성능</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: sticky step rail on the left, one reading column of numbered lab steps; code blocks are dark "console" panes in both themes. */
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --ink: #16202a;
+  --muted: #5a6573;
+  --line: #dbe1e7;
+  --accent: #0a7c76;
+  --accent-soft: #e2f2f0;
+  --warn: #9a5b00;
+  --warn-soft: #fbf1df;
+  --code-bg: #121920;
+  --code-fg: #e4ebf1;
+  --code-muted: #7d8b99;
+  --tk-k: #7cc7ff;
+  --tk-s: #f2c37a;
+  --tk-l: #8fe3b4;
+  --tk-n: #f59a8c;
+  --tk-f: #d7a8ff;
+  --n-person: #d9722b;
+  --n-team: #3767cf;
+  --n-skill: #23936a;
+  --n-project: #9a47bb;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "D2Coding", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1418; --surface: #161d23; --ink: #e3e9ee; --muted: #9aa6b2; --line: #28323b;
+    --accent: #3cc2b9; --accent-soft: #123532; --warn: #f0b259; --warn-soft: #33270f;
+    --code-bg: #0a0f13; --code-fg: #e4ebf1; --code-muted: #7d8b99;
+    --n-person: #f08b44; --n-team: #6f97ef; --n-skill: #44c08f; --n-project: #c27ae0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1418; --surface: #161d23; --ink: #e3e9ee; --muted: #9aa6b2; --line: #28323b;
+  --accent: #3cc2b9; --accent-soft: #123532; --warn: #f0b259; --warn-soft: #33270f;
+  --code-bg: #0a0f13; --code-fg: #e4ebf1; --code-muted: #7d8b99;
+  --n-person: #f08b44; --n-team: #6f97ef; --n-skill: #44c08f; --n-project: #c27ae0;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15.5px; line-height: 1.7; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 32px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 48px; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.3; margin: 0; }
+p { margin: 0; }
+code { font-family: var(--font-mono); font-size: 0.9em; background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+a { color: var(--accent); }
+
+/* rail */
+.rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; display: flex; flex-direction: column; gap: 14px; }
+.rail .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.rail ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rail a { display: grid; grid-template-columns: 26px 1fr; gap: 6px; align-items: baseline; text-decoration: none; color: var(--muted); font-size: 13.5px; padding: 4px 8px; border-radius: 6px; }
+.rail a:hover { background: var(--surface); color: var(--ink); }
+.rail a .no { font-family: var(--font-mono); font-size: 12px; }
+.rail a.done .no::before { content: "✓"; color: var(--accent); font-weight: 700; }
+.rail a.done .no span { display: none; }
+#progressText { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* hero */
+main { min-width: 0; display: flex; flex-direction: column; gap: 56px; }
+.hero { display: flex; flex-direction: column; gap: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); padding-block-end: 32px; }
+.hero h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; letter-spacing: -0.01em; }
+.hero .lede { font-size: 17px; color: var(--muted); max-width: 62ch; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13.5px; color: var(--muted); }
+.meta b { color: var(--ink); font-weight: 500; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12.5px; padding: 2px 9px 2px 7px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.chip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--muted)); }
+
+/* steps */
+section.step { display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 20px; }
+.step-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.step-no { font-family: var(--font-mono); font-size: 13px; color: var(--accent); font-weight: 500; letter-spacing: .04em; }
+.step-head h2 { font-size: 24px; font-weight: 700; flex: 1 1 260px; }
+.done-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
+.done-toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+.goal { font-size: 15px; color: var(--muted); max-width: 70ch; }
+.goal strong { color: var(--ink); font-weight: 500; }
+.body { display: flex; flex-direction: column; gap: 14px; max-width: 76ch; }
+.body ol, .body ul { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; }
+h3 { font-size: 16.5px; font-weight: 700; margin-top: 8px; }
+
+/* code */
+.code { background: var(--code-bg); color: var(--code-fg); border-radius: 10px; overflow: hidden; max-width: 100%; }
+.code-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 10px 7px 14px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 12px; color: var(--code-muted); font-family: var(--font-mono); }
+.copy { font: inherit; font-size: 12px; color: var(--code-fg); background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.copy:hover { background: rgba(255,255,255,.16); }
+.copy:focus-visible, .rail a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+pre.cy { margin: 0; padding: 14px 16px; overflow-x: auto; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.6; white-space: pre; tab-size: 2; }
+.t-k { color: var(--tk-k); font-weight: 500; } .t-s { color: var(--tk-s); } .t-l { color: var(--tk-l); } .t-n { color: var(--tk-n); } .t-f { color: var(--tk-f); } .t-c { color: var(--code-muted); font-style: italic; }
+
+/* result + notes */
+.result { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 16px; font-size: 14.5px; display: flex; flex-direction: column; gap: 8px; }
+.result .lab { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; min-width: 100%; }
+th, td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-family: var(--font-mono); font-size: 12.5px; }
+tr:last-child td { border-bottom: 0; }
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14.5px; }
+.note.warn { border-color: var(--warn); background: var(--warn-soft); }
+.note b { font-weight: 700; }
+details.answer { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 14px; background: var(--surface); }
+details.answer summary { cursor: pointer; color: var(--accent); font-weight: 500; font-size: 14px; }
+details.answer[open] summary { margin-bottom: 10px; }
+details.answer > div { display: flex; flex-direction: column; gap: 10px; }
+.ex { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.ex:first-of-type { border-top: 0; padding-top: 0; }
+.ex p.q { font-weight: 500; }
+.ex p.q span { font-family: var(--font-mono); color: var(--accent); margin-right: 8px; }
+
+/* model figure */
+figure.shot { margin: 0; display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
+figure.shot img { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+figure.shot.narrow img { max-width: min(100%, 420px); }
+figure.shot figcaption { font-size: 13px; color: var(--muted); }
+.cap-tag { font-family: var(--font-mono); font-size: 11px; color: var(--accent); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-right: 8px; }
+.shot-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; align-items: start; }
+figure.model { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; overflow-x: auto; }
+figure.model svg { display: block; width: 100%; min-width: 520px; height: auto; }
+figure.model figcaption { font-size: 13px; color: var(--muted); padding: 6px 4px 0; }
+.edge { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+.arrowhead { fill: var(--muted); }
+.elabel { fill: var(--ink); font-family: var(--font-mono); font-size: 11.5px; }
+.elabel tspan.prop { fill: var(--muted); }
+.nlabel { fill: #ffffff; font-family: var(--font-mono); font-size: 13px; font-weight: 500; }
+.ncount { fill: #ffffff; font-family: var(--font-body); font-size: 11px; opacity: .9; }
+
+.ui-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.ui-map div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.ui-map b { font-size: 14.5px; }
+kbd { font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--surface); }
+
+@media (max-width: 900px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .rail { position: static; }
+  .rail ol { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .rail a { grid-template-columns: auto; padding: 3px 9px; border: 1px solid var(--line); background: var(--surface); }
+  .rail a .t { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } html { scroll-behavior: auto; } }
+html { scroll-behavior: smooth; }
+</style>
+
+
+<style>
+.n-a{fill:var(--n-person)}.n-b{fill:var(--n-team)}.n-c{fill:var(--n-skill)}.n-d{fill:var(--n-project)}.n-e{fill:var(--muted)}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:flex;flex-direction:column;gap:6px;font-size:14.5px}
+.box b.t{font-size:12px;letter-spacing:.06em;color:var(--accent);text-transform:uppercase}
+.result td, .result th{white-space:normal;vertical-align:top}
+.result td.nw, .result th.nw{white-space:nowrap}
+</style>
+<div class="wrap">
+<nav class="rail" aria-label="실습 단계"><span class="eyebrow">진행률</span><div class="bar" aria-hidden="true"><i id="barFill"></i></div><span id="progressText">0 / 14 단계 완료</span><ol id="railList"></ol></nav>
+<main>
+<header class="hero"><span class="step-no">HANDS-ON LAB · 9강 Cypher 심화</span><h1>Cypher 심화 실습: 경로 탐색 · 인덱스 · 성능</h1><p class="lede">사람–요리–재료 그래프에서 가변 길이 경로와 최단 경로를 탐색하고, 서브쿼리와 리스트 표현식으로 질의를 줄이고, 인덱스·제약조건을 만든 뒤 PROFILE로 실행 계획이 어떻게 달라지는지 숫자로 확인하는 실습입니다.</p><div class="meta"><span><b>소요 시간</b> 약 110~130분</span><span><b>대응 강의</b> 9. Cypher 심화 — 경로 탐색, 인덱스, 성능</span><span><b>준비물</b> 비어 있는 AuraDB 인스턴스(Free 가능)</span><span><b>선수 실습</b> 07. Cypher 기초 패턴 매칭과 CRUD</span><span><b>검증</b> 예상 결과가 있는 쿼리를 실제 AuraDB Free 인스턴스(Cypher 25)에서 실행해 확인 (2026-11-14)</span></div><div class="chips" aria-label="실습 데이터 라벨"><span class="chip" style="--c: var(--n-person)">사람 8</span><span class="chip" style="--c: var(--n-skill)">요리 8</span><span class="chip" style="--c: var(--n-team)">재료 9</span><span class="chip" style="--c: var(--n-project)">종류 3</span><span class="chip">노드 28 · 관계 50</span></div></header>
+<section class="step" id="s00" data-title="시작 전 준비"><div class="step-head"><span class="step-no">STEP 00</span><h2>시작 전 준비</h2></div>
+<p class="goal"><strong>목표</strong> 실습 전용 인스턴스가 비어 있고, 이전 실습의 제약조건이 남아 있지 않은지 확인합니다.</p>
+<div class="code"><div class="code-top"><span>00-1 · 데이터와 제약조건 확인</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (n) RETURN count(n) AS 노드수;
+SHOW CONSTRAINTS YIELD name RETURN name;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p><code>노드수</code> = <b>0</b>, 제약조건 목록은 비어 있어야 합니다. 07 실습의 <code>사람_고유</code> 제약조건이 남아 있으면 <code>DROP CONSTRAINT 사람_고유;</code>로 지우세요. 이번 실습에서는 인덱스가 없는 상태와 있는 상태를 비교해야 합니다.</p></div>
+<div class="note warn"><b>주의</b> 마지막 STEP에서 모든 노드를 지웁니다. 실습 전용 인스턴스에서만 진행하세요.</div>
+</section>
+
+<section class="step" id="s01" data-title="실습 데이터"><div class="step-head"><span class="step-no">STEP 01</span><h2>실습 데이터 적재 (UNWIND 배치 입력)</h2></div>
+<p class="goal"><strong>목표</strong> 리스트 원소 하나가 행 하나가 되는 <code>UNWIND</code>로 데이터를 넣습니다. 사람에는 일부러 제약조건과 인덱스를 만들지 않습니다(STEP 08에서 비교).</p>
+<figure class="model"><svg viewBox="0 0 660 330" role="img" aria-label="사람끼리는 친구, 사람과 요리는 개발 · 좋아함, 요리는 재료(분량)와 분류, 요리끼리는 참고로 이어집니다. 가공 재료는 다시 원재료로 이어집니다(재료 → 재료)."><defs><marker id="arr1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker></defs><path class="edge" d="M 92 148 C 62 76, 158 76, 128 148" marker-end="url(#arr1)"/><text class="elabel" x="110" y="88" text-anchor="middle">친구</text><line class="edge" x1="156" y1="190" x2="292" y2="190" marker-end="url(#arr1)"/><text class="elabel" x="224" y="180" text-anchor="middle">개발 · 좋아함</text><line class="edge" x1="386" y1="190" x2="524" y2="190" marker-end="url(#arr1)"/><text class="elabel" x="455" y="180" text-anchor="middle">재료 <tspan class="prop">{분량}</tspan></text><line class="edge" x1="340" y1="144" x2="340" y2="86" marker-end="url(#arr1)"/><text class="elabel" x="332" y="119" text-anchor="end">분류</text><path class="edge" d="M 552 150 C 522 78, 618 78, 588 150" marker-end="url(#arr1)"/><text class="elabel" x="570" y="90" text-anchor="middle">재료 <tspan class="prop">{분량}</tspan></text><circle cx="110" cy="190" r="46" class="n-a"/><text class="nlabel" x="110" y="188" text-anchor="middle">사람</text><text class="ncount" x="110" y="205" text-anchor="middle">이름</text><circle cx="340" cy="190" r="46" class="n-c"/><text class="nlabel" x="340" y="188" text-anchor="middle">요리</text><text class="ncount" x="340" y="205" text-anchor="middle">요리명·등록연도</text><circle cx="570" cy="190" r="44" class="n-b"/><text class="nlabel" x="570" y="188" text-anchor="middle">재료</text><text class="ncount" x="570" y="205" text-anchor="middle">분류·이름</text><circle cx="340" cy="50" r="34" class="n-d"/><text class="nlabel" x="340" y="48" text-anchor="middle">종류</text><text class="ncount" x="340" y="65" text-anchor="middle">이름</text></svg><figcaption>사람끼리는 <code>친구</code>, 사람과 요리는 <code>개발</code> · <code>좋아함</code>, 요리는 <code>재료</code>(분량)와 <code>분류</code>, 요리끼리는 <code>참고</code>로 이어집니다. 가공 재료는 다시 원재료로 이어집니다(재료 → 재료).</figcaption></figure>
+<div class="code"><div class="code-top"><span>01-1 · 요리에만 고유 제약조건</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE CONSTRAINT 요리_고유 IF NOT EXISTS
+  FOR (요리:요리) REQUIRE 요리.요리명 IS UNIQUE;</pre></div>
+<div class="code"><div class="code-top"><span>01-2 · 사람과 친구</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND ['김철수', '이영희', '박민수', '강민지', '최지우', '정하늘', '윤서준', '한소라'] AS 이름
+MERGE (:사람 {이름: 이름});
+
+UNWIND [
+  ['김철수', '이영희'], ['김철수', '박민수'], ['이영희', '강민지'], ['박민수', '강민지'],
+  ['강민지', '최지우'], ['최지우', '정하늘'], ['정하늘', '윤서준']
+] AS 행
+MATCH (a:사람 {이름: 행[0]})
+MATCH (b:사람 {이름: 행[1]})
+MERGE (a)-[:친구]-&gt;(b);</pre></div>
+<div class="code"><div class="code-top"><span>01-3 · 요리 + 종류 + 개발</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND [
+  {요리명: '김치찌개',   연도: 2019, 종류: '한식', 개발자: '김철수'},
+  {요리명: '떡볶이',     연도: 2003, 종류: '분식', 개발자: '김철수'},
+  {요리명: '김치볶음밥', 연도: 2015, 종류: '한식', 개발자: '김철수'},
+  {요리명: '된장찌개',   연도: 2021, 종류: '한식', 개발자: '이영희'},
+  {요리명: '비빔밥',     연도: 2022, 종류: '한식', 개발자: '박민수'},
+  {요리명: '잡채',       연도: 2012, 종류: '한식', 개발자: '박민수'},
+  {요리명: '라면',       연도: 2023, 종류: '분식', 개발자: '최지우'},
+  {요리명: '부대찌개',   연도: 2020, 종류: '퓨전', 개발자: '정하늘'}
+] AS 행
+MATCH (개발자:사람 {이름: 행.개발자})
+MERGE (요리:요리 {요리명: 행.요리명})
+SET 요리.등록연도 = 행.연도
+MERGE (종류:종류 {이름: 행.종류})
+MERGE (요리)-[:분류]-&gt;(종류)
+MERGE (개발자)-[:개발]-&gt;(요리)
+RETURN count(요리) AS 요리수;</pre></div>
+<div class="code"><div class="code-top"><span>01-4 · 좋아함과 참고</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND [
+  ['이영희', '김치찌개'], ['이영희', '떡볶이'], ['강민지', '김치찌개'], ['최지우', '된장찌개'],
+  ['윤서준', '라면'], ['정하늘', '비빔밥'], ['김철수', '된장찌개'], ['한소라', '부대찌개']
+] AS 행
+MATCH (사람:사람 {이름: 행[0]})
+MATCH (요리:요리 {요리명: 행[1]})
+MERGE (사람)-[:좋아함]-&gt;(요리);
+
+UNWIND [
+  ['부대찌개', '김치찌개'], ['김치볶음밥', '김치찌개'], ['김치찌개', '된장찌개'], ['라면', '부대찌개']
+] AS 행
+MATCH (참고하는:요리 {요리명: 행[0]})
+MATCH (원본:요리 {요리명: 행[1]})
+MERGE (참고하는)-[:참고]-&gt;(원본);</pre></div>
+<div class="code"><div class="code-top"><span>01-5 · 재료 노드와 재료 관계(분량, g)</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND [
+  ['가공', '김치'], ['가공', '두부'], ['양념', '된장'], ['양념', '고추장'], ['양념', '고춧가루'],
+  ['곡물', '쌀'], ['곡물', '떡'], ['곡물', '콩'], ['채소', '배추']
+] AS 행
+MERGE (:재료 {분류: 행[0], 이름: 행[1]});
+
+UNWIND [
+  ['김치찌개', '김치', 300], ['김치찌개', '두부', 150],
+  ['된장찌개', '된장', 50],  ['된장찌개', '두부', 200],
+  ['김치볶음밥', '김치', 150], ['김치볶음밥', '쌀', 200],
+  ['떡볶이', '떡', 300], ['떡볶이', '고추장', 60],
+  ['비빔밥', '쌀', 200], ['비빔밥', '고추장', 30]
+] AS 행
+MATCH (요리:요리 {요리명: 행[0]})
+MATCH (재료:재료 {이름: 행[1]})
+MERGE (요리)-[관계:재료]-&gt;(재료)
+SET 관계.분량 = 행[2];
+
+UNWIND [
+  ['김치', '배추', 250], ['김치', '고춧가루', 30], ['된장', '콩', 40],
+  ['고추장', '고춧가루', 20], ['두부', '콩', 100]
+] AS 행
+MATCH (가공품:재료 {이름: 행[0]})
+MATCH (원재료:재료 {이름: 행[1]})
+MERGE (가공품)-[관계:재료]-&gt;(원재료)
+SET 관계.분량 = 행[2];</pre></div>
+<div class="code"><div class="code-top"><span>01-6 · 적재 검증</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (n) RETURN labels(n)[0] AS 라벨, count(*) AS 건수 ORDER BY 라벨;</pre></div>
+<div class="code"><div class="code-top"><span>01-7 · 관계 검증</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH ()-[r]-&gt;() RETURN type(r) AS 관계, count(*) AS 건수 ORDER BY 관계;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><div class="tbl"><table><thead><tr><th>라벨</th><th>건수</th><th></th><th>관계</th><th>건수</th></tr></thead><tbody><tr><td>사람</td><td>8</td><td></td><td>개발</td><td>8</td></tr><tr><td>요리</td><td>8</td><td></td><td>분류</td><td>8</td></tr><tr><td>재료</td><td>9</td><td></td><td>재료</td><td>15</td></tr><tr><td>종류</td><td>3</td><td></td><td>좋아함</td><td>8</td></tr><tr><td></td><td></td><td></td><td>참고</td><td>4</td></tr><tr><td></td><td></td><td></td><td>친구</td><td>7</td></tr></tbody></table></div><p>노드 28개, 관계 50개. 숫자가 다르면 <code>MATCH (n) DETACH DELETE n;</code>으로 비우고 01-2부터 다시 실행하세요.</p></div>
+</section>
+
+<section class="step" id="s02" data-title="가변 길이 경로"><div class="step-head"><span class="step-no">STEP 02</span><h2>가변 길이 경로: *최소..최대</h2></div>
+<p class="goal"><strong>목표</strong> 몇 단계를 건너 이어지는 노드를 한 번에 찾습니다. 순환이 있는 그래프에서 같은 사람이 여러 번 나오는 이유도 확인합니다.</p>
+<div class="code"><div class="code-top"><span>02-1 · 1~3단계 이내로 이어지는 친구</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH 경로 = (출발:사람 {이름:'김철수'})
+      -[:친구*1..3]-(도착:사람)
+RETURN 도착.이름 AS 사람,
+       length(경로) AS 단계
+ORDER BY 단계;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><div class="tbl"><table><thead><tr><th>사람</th><th>단계</th><th>(설명) 어떤 경로인가</th></tr></thead><tbody><tr><td>이영희</td><td>1</td><td>김철수 → 이영희</td></tr><tr><td>박민수</td><td>1</td><td>김철수 → 박민수</td></tr><tr><td>강민지</td><td>2</td><td>김철수 → 이영희 → 강민지</td></tr><tr><td>강민지</td><td>2</td><td>김철수 → 박민수 → 강민지</td></tr><tr><td>박민수</td><td>3</td><td>김철수 → 이영희 → 강민지 → 박민수</td></tr><tr><td>최지우</td><td>3</td><td>김철수 → 이영희 → 강민지 → 최지우</td></tr><tr><td>이영희</td><td>3</td><td>김철수 → 박민수 → 강민지 → 이영희</td></tr><tr><td>최지우</td><td>3</td><td>김철수 → 박민수 → 강민지 → 최지우</td></tr></tbody></table></div><p><b>8행</b>(같은 단계 안의 순서는 다를 수 있음). 결과는 "사람"이 아니라 "경로"마다 한 행입니다. 김철수–이영희–강민지–박민수가 고리를 이루고 있어서, 직접 친구인 박민수가 3단계로도 한 번 더 나옵니다.</p></div>
+<div class="code"><div class="code-top"><span>02-2 · 사람별로 가장 가까운 단계만</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH 경로 = (출발:사람 {이름:'김철수'})-[:친구*1..3]-(도착:사람)
+RETURN 도착.이름 AS 사람, min(length(경로)) AS 단계
+ORDER BY 단계, 사람;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>박민수 1 · 이영희 1 · 강민지 2 · 최지우 3 (4행)</p></div>
+<div class="code"><div class="code-top"><span>02-3 · 친구의 친구 중 아직 친구가 아닌 사람</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (나:사람 {이름:'김철수'})-[:친구*2]-(후보:사람)
+WHERE NOT (나)-[:친구]-(후보)
+RETURN DISTINCT 후보.이름 AS 친구추천;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>강민지. <code>*2</code>는 최소와 최대가 같아 정확히 두 단계만 따라갑니다.</p></div>
+<div class="note"><b>같은 관계는 한 경로에서 한 번만</b> Cypher는 한 패턴 안에서 같은 관계를 두 번 지나지 않습니다. 그래서 김철수 → 이영희 → 김철수처럼 되돌아오는 경로는 나오지 않습니다. 같은 <b>노드</b>는 다른 관계를 통해 다시 지날 수 있습니다.</div>
+</section>
+
+<section class="step" id="s03" data-title="여러 타입과 상한"><div class="step-head"><span class="step-no">STEP 03</span><h2>정확한 단계, 여러 관계 타입, 그리고 상한</h2></div>
+<p class="goal"><strong>목표</strong> <code>|</code>로 관계 타입 여러 개를 동시에 지정하고, 상한 없는 탐색이 왜 위험한지 경로 수로 확인합니다.</p>
+<div class="code"><div class="code-top"><span>03-1 · 정확히 2단계 — 같은 요리로 이어진 사람</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (기준:사람 {이름:'김철수'})
+      -[:개발|좋아함*2]-(동료:사람)
+RETURN DISTINCT 동료.이름 AS 함께한사람;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>이영희 · 강민지 · 최지우 (3행). <code>DISTINCT</code>를 지우면 5행입니다. 이영희는 김치찌개·떡볶이·된장찌개 세 요리로 이어져 세 번 나옵니다. 경로는 5개, 사람은 3명입니다.</p></div>
+<div class="code"><div class="code-top"><span>03-2 · 참고 관계를 따라 원본까지 (상한 지정)</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (요리:요리 {요리명:'김치찌개'})
+      -[:참고*1..5]-&gt;(원본:요리)
+RETURN DISTINCT 원본.요리명;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>된장찌개</p></div>
+<div class="code"><div class="code-top"><span>03-3 · 라면에서 출발하면</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH 경로 = (:요리 {요리명:'라면'})-[:참고*1..5]-&gt;(원본:요리)
+RETURN 원본.요리명 AS 원본, length(경로) AS 단계
+ORDER BY 단계;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>부대찌개 1 · 김치찌개 2 · 된장찌개 3</p></div>
+<h3>깊이가 늘수록 경로 수는 빠르게 늘어난다</h3>
+<div class="code"><div class="code-top"><span>03-4 · 깊이별 경로 수 세기</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH 경로 = (:사람 {이름:'김철수'})-[:개발|좋아함*1..6]-()
+RETURN length(경로) AS 깊이, count(*) AS 경로수
+ORDER BY 깊이;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><div class="tbl"><table><thead><tr><th>깊이</th><th>경로수</th></tr></thead><tbody><tr><td>1</td><td>4</td></tr><tr><td>2</td><td>5</td></tr><tr><td>3</td><td>7</td></tr><tr><td>4</td><td>11</td></tr><tr><td>5</td><td>14</td></tr><tr><td>6</td><td>12</td></tr></tbody></table></div><p>합계 53개. 노드 16개, 관계 16개뿐인 작은 그래프인데도 이만큼 나옵니다. 여기서는 그래프가 작아 6단계에서 경로가 소진되기 시작하지만, 실제 데이터에서는 깊이마다 몇 배씩 늘어납니다.</p></div>
+<div class="note warn"><b>상한은 반드시</b> <code>-[:친구*]-</code>처럼 상한을 생략하면 그래프 전체를 순회할 수 있습니다. 큰 데이터베이스에서는 질의가 끝나지 않습니다. 항상 <code>*1..3</code>처럼 최대값을 쓰고, 조건은 최대한 일찍 겁니다.</div>
+</section>
+
+<section class="step" id="s04" data-title="최단 경로"><div class="step-head"><span class="step-no">STEP 04</span><h2>최단 경로: shortestPath · allShortestPaths</h2></div>
+<p class="goal"><strong>목표</strong> 두 노드 사이에서 관계 수가 가장 적은 경로를 찾습니다. 하나만 찾을 때와 모두 찾을 때를 비교합니다.</p>
+<div class="code"><div class="code-top"><span>04-1 · 두 사람 사이의 최단 경로 1개</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (시작:사람 {이름:'김철수'}),
+      (도착:사람 {이름:'이영희'})
+MATCH 경로 = shortestPath(
+        (시작)-[:개발|좋아함*..6]-(도착))
+RETURN [노드 IN nodes(경로) |
+        coalesce(노드.이름, 노드.요리명)] AS 경로,
+       length(경로) AS 거리;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p><code>[김철수, (요리), 이영희]</code> · 거리 2. 가운데 요리는 김치찌개·떡볶이·된장찌개 중 하나입니다. <code>coalesce</code>는 사람이면 이름, 요리면 요리명처럼 있는 값을 고릅니다. <code>Cartesian product</code> 알림은 두 사람을 각각 하나씩 찾는 것이므로 무시해도 됩니다.</p></div>
+<div class="code"><div class="code-top"><span>04-2 · 최단 거리의 모든 경로</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (시작:사람 {이름:'김철수'}),
+      (도착:사람 {이름:'이영희'})
+MATCH 경로 = allShortestPaths(
+        (시작)-[:개발|좋아함*..6]-(도착))
+RETURN [노드 IN nodes(경로) | coalesce(노드.이름, 노드.요리명)] AS 경로;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>3행: 김치찌개 경유 · 떡볶이 경유 · 된장찌개 경유. <code>RETURN count(경로) AS 경로수</code>로 바꾸면 3입니다.</p></div>
+<div class="code"><div class="code-top"><span>04-3 · 더 먼 두 사람</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (시작:사람 {이름:'김철수'}), (도착:사람 {이름:'윤서준'})
+MATCH 경로 = shortestPath((시작)-[:개발|좋아함*..6]-(도착))
+RETURN [노드 IN nodes(경로) | coalesce(노드.이름, 노드.요리명)] AS 경로,
+       length(경로) AS 거리;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p><code>[김철수, 된장찌개, 최지우, 라면, 윤서준]</code> · 거리 4</p></div>
+<div class="code"><div class="code-top"><span>04-4 · 관계 타입을 바꾸면 최단 경로도 바뀐다</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (시작:사람 {이름:'김철수'}), (도착:사람 {이름:'윤서준'})
+MATCH 경로 = allShortestPaths((시작)-[:친구*..6]-(도착))
+RETURN [노드 IN nodes(경로) | 노드.이름] AS 경로, length(경로) AS 거리;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>2행, 거리 5: 김철수 → 이영희 → 강민지 → 최지우 → 정하늘 → 윤서준, 그리고 박민수를 거치는 경로.</p></div>
+<div class="code"><div class="code-top"><span>04-5 · 경로가 없으면</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (시작:사람 {이름:'김철수'}), (도착:사람 {이름:'한소라'})
+MATCH 경로 = shortestPath((시작)-[:친구*..6]-(도착))
+RETURN 경로;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p><b>결과가 비어 있습니다.</b> 한소라는 친구 관계가 하나도 없습니다. 오류가 아니라 "경로 없음"이라는 답입니다.</p></div>
+<div class="note"><b>shortestPath의 기준은 관계 수</b> 거리·비용 같은 속성(가중치)은 고려하지 않습니다. <code>거리: 100</code>짜리 관계 1개와 <code>거리: 1</code>짜리 관계 2개가 있으면 관계 1개짜리가 선택됩니다. 가중치 최단 경로는 Graph Data Science 라이브러리의 영역입니다.</div>
+</section>
+
+<section class="step" id="s05" data-title="경로 분해와 reduce"><div class="step-head"><span class="step-no">STEP 05</span><h2>경로 객체 분해와 reduce</h2></div>
+<p class="goal"><strong>목표</strong> 경로는 노드와 관계가 번갈아 이어진 하나의 값입니다. <code>nodes()</code>, <code>relationships()</code>, <code>length()</code>로 분해하고 <code>reduce</code>로 경로 위의 값을 합산합니다.</p>
+<div class="code"><div class="code-top"><span>05-1 · 경로를 세 함수로 분해</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (시작:사람 {이름:'김철수'}), (도착:사람 {이름:'윤서준'})
+MATCH 경로 = shortestPath((시작)-[:개발|좋아함*..6]-(도착))
+RETURN [노드 IN nodes(경로) | coalesce(노드.이름, 노드.요리명)] AS 노드목록,
+       [관계 IN relationships(경로) | type(관계)] AS 관계목록,
+       length(경로) AS 관계수;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>노드목록 [김철수, 된장찌개, 최지우, 라면, 윤서준] · 관계목록 [좋아함, 좋아함, 개발, 좋아함] · 관계수 4. 노드는 항상 관계보다 하나 많습니다.</p></div>
+<div class="code"><div class="code-top"><span>05-2 · 경로 위의 분량 합산</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH 경로 = (:요리 {요리명:'김치찌개'})-[:재료*1..3]-&gt;(:재료)
+RETURN [노드 IN nodes(경로) | coalesce(노드.요리명, 노드.이름)] AS 재료경로,
+       reduce(합계 = 0,
+              관계 IN relationships(경로)
+              | 합계 + 관계.분량) AS 총분량
+ORDER BY 총분량 DESC;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><div class="tbl"><table><thead><tr><th>재료경로</th><th>총분량</th></tr></thead><tbody><tr><td>[김치찌개, 김치, 배추]</td><td>550</td></tr><tr><td>[김치찌개, 김치, 고춧가루]</td><td>330</td></tr><tr><td>[김치찌개, 김치]</td><td>300</td></tr><tr><td>[김치찌개, 두부, 콩]</td><td>250</td></tr><tr><td>[김치찌개, 두부]</td><td>150</td></tr></tbody></table></div><p><code>reduce</code>는 누적 변수(<code>합계 = 0</code>)를 들고 리스트를 하나씩 돌며 더합니다. 프로그래밍 언어의 fold와 같습니다. 김치 → 배추 경로는 0 → 300 → 550 순으로 누적됩니다.</p></div>
+<div class="code"><div class="code-top"><span>05-3 · 요리별로 가장 긴 재료 사슬</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH 경로 = (요리:요리)-[:재료*1..3]-&gt;(:재료)
+WITH 요리, reduce(합계 = 0, 관계 IN relationships(경로) | 합계 + 관계.분량) AS 총분량
+RETURN 요리.요리명 AS 요리명, count(*) AS 경로수, max(총분량) AS 최대총분량
+ORDER BY 최대총분량 DESC, 요리명;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>김치찌개 5 · 550 / 김치볶음밥 4 · 400 / 된장찌개 4 · 300 / 떡볶이 3 · 300 / 비빔밥 3 · 200</p></div>
+</section>
+
+<section class="step" id="s06" data-title="UNWIND와 CALL"><div class="step-head"><span class="step-no">STEP 06</span><h2>UNWIND와 CALL 서브쿼리</h2></div>
+<p class="goal"><strong>목표</strong> 리스트를 행으로 펼치는 <code>UNWIND</code>와, 바깥 행마다 독립적으로 실행되는 <code>CALL</code> 서브쿼리로 "그룹별 상위 N건"을 구합니다.</p>
+<div class="code"><div class="code-top"><span>06-1 · UNWIND — 리스트 원소 하나 = 행 하나</span><button class="copy" type="button">복사</button></div><pre class="cy">UNWIND [{요리명:'된장찌개', 연도:2021}, {요리명:'비빔밥', 연도:2022}] AS 행
+MERGE (요리:요리 {요리명: 행.요리명})
+SET 요리.등록연도 = 행.연도
+RETURN 요리.요리명 AS 요리명, 요리.등록연도 AS 등록연도;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>된장찌개 2021 · 비빔밥 2022. 이미 같은 값으로 적재되어 있어 데이터는 바뀌지 않습니다. STEP 01의 적재가 모두 이 형태였습니다.</p></div>
+<div class="code"><div class="code-top"><span>06-2 · UNWIND로 리스트 다루기</span><button class="copy" type="button">복사</button></div><pre class="cy">WITH [3, 1, 2, 3, 1] AS 숫자들
+UNWIND 숫자들 AS 숫자
+RETURN collect(DISTINCT 숫자) AS 중복제거, sum(숫자) AS 합계, count(*) AS 개수;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>[3, 1, 2] · 10 · 5</p></div>
+<div class="code"><div class="code-top"><span>06-3 · 종류별 최근 등록 요리 2개씩</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (종류:종류)
+CALL (종류) {
+  MATCH (종류)&lt;-[:분류]-(요리:요리)
+  RETURN 요리 ORDER BY 요리.등록연도 DESC LIMIT 2
+}
+RETURN 종류.이름 AS 종류,
+       collect(요리.요리명) AS 최근등록
+ORDER BY 종류;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><div class="tbl"><table><thead><tr><th>종류</th><th>최근등록</th></tr></thead><tbody><tr><td>분식</td><td>[라면, 떡볶이]</td></tr><tr><td>퓨전</td><td>[부대찌개]</td></tr><tr><td>한식</td><td>[비빔밥, 된장찌개]</td></tr></tbody></table></div><p>한식은 요리가 5개지만 서브쿼리 안의 <code>LIMIT 2</code>가 종류마다 따로 적용됩니다. SQL이라면 윈도우 함수와 순위 필터가 필요한 질의입니다.</p></div>
+<div class="code"><div class="code-top"><span>06-4 · 비교: 서브쿼리 없이 LIMIT을 쓰면</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (종류:종류)&lt;-[:분류]-(요리:요리)
+RETURN 종류.이름 AS 종류, 요리.요리명 AS 요리명, 요리.등록연도 AS 등록연도
+ORDER BY 등록연도 DESC LIMIT 2;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>분식 · 라면 · 2023 / 한식 · 비빔밥 · 2022. <code>LIMIT</code>이 전체 결과에 한 번만 적용되어 종류별 상위 2건이 되지 않습니다.</p></div>
+<div class="note"><b>CALL (변수) { … }</b> 괄호 안에 적은 바깥 변수만 서브쿼리 안에서 쓸 수 있습니다. 예전 문법인 <code>CALL { WITH 종류 … }</code>도 같은 뜻이며 오래된 자료에서 자주 보입니다.</div>
+</section>
+
+<section class="step" id="s07" data-title="컴프리헨션과 EXISTS"><div class="step-head"><span class="step-no">STEP 07</span><h2>리스트·패턴 컴프리헨션과 EXISTS</h2></div>
+<p class="goal"><strong>목표</strong> 별도의 <code>MATCH</code>와 <code>collect</code> 없이 <code>RETURN</code> 한 줄에서 리스트를 만들고, 관계가 있는지만 확인하는 <code>EXISTS</code>로 불필요한 확장을 막습니다.</p>
+<div class="code"><div class="code-top"><span>07-1 · 리스트 컴프리헨션: [변수 IN 리스트 WHERE 조건 | 뽑을 값]</span><button class="copy" type="button">복사</button></div><pre class="cy">RETURN [x IN range(1, 6) WHERE x % 2 = 1 | x * 10] AS 홀수의열배;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>[10, 30, 50]</p></div>
+<div class="code"><div class="code-top"><span>07-2 · 패턴 컴프리헨션: [패턴 WHERE 조건 | 뽑을 값]</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (요리사:사람 {이름:'김철수'})
+RETURN 요리사.이름 AS 요리사,
+       [(요리사)-[:개발]-&gt;(요리:요리)
+        WHERE 요리.등록연도 &gt; 2010 | 요리.요리명] AS 최근등록;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>김철수 · [김치찌개, 김치볶음밥] (목록 안의 순서는 다를 수 있음). 2003년 등록인 떡볶이는 빠집니다.</p></div>
+<div class="code"><div class="code-top"><span>07-3 · 사람마다 개발 목록과 좋아함 목록을 한 번에</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (사람:사람)
+RETURN 사람.이름 AS 이름,
+       [(사람)-[:개발]-&gt;(요리) | 요리.요리명]   AS 개발,
+       [(사람)-[:좋아함]-&gt;(요리) | 요리.요리명] AS 좋아함
+ORDER BY 이름;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>8행. 강민지는 개발 <code>[]</code>, 좋아함 [김치찌개]. 패턴이 하나도 맞지 않으면 행이 사라지는 대신 빈 리스트가 됩니다. <code>MATCH</code> 두 개로 쓰면 두 목록이 곱해져 행이 늘어나는데, 컴프리헨션은 그렇지 않습니다.</p></div>
+<h3>EXISTS — 있는지만 본다</h3>
+<div class="code"><div class="code-top"><span>07-4 · MATCH로 확장하면 요리 수만큼 행이 늘어난다</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (사람:사람)-[:개발]-&gt;(:요리)
+RETURN 사람.이름 AS 요리사;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p><b>8행</b>. 김철수 3번, 박민수 2번, 이영희·최지우·정하늘 1번씩. 요리사 목록을 얻으려면 <code>DISTINCT</code>가 더 필요합니다.</p></div>
+<div class="code"><div class="code-top"><span>07-5 · EXISTS로 존재만 검사</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (사람:사람)
+WHERE EXISTS { (사람)-[:개발]-&gt;(:요리) }
+RETURN 사람.이름 AS 요리사;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p><b>5행</b>: 김철수 · 이영희 · 박민수 · 최지우 · 정하늘. 사람당 한 번만 참/거짓을 판단하므로 경로 확장이 없습니다.</p></div>
+<div class="code"><div class="code-top"><span>07-6 · EXISTS 안에 조건 넣기: 2020년 이후 요리를 개발한 사람</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (사람:사람)
+WHERE EXISTS {
+  MATCH (사람)-[:개발]-&gt;(요리:요리)
+  WHERE 요리.등록연도 &gt;= 2020
+}
+RETURN 사람.이름 AS 요리사 ORDER BY 요리사;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>박민수(비빔밥 2022) · 이영희(된장찌개 2021) · 정하늘(부대찌개 2020) · 최지우(라면 2023)</p></div>
+</section>
+
+<section class="step" id="s08" data-title="인덱스"><div class="step-head"><span class="step-no">STEP 08</span><h2>인덱스: 탐색 시작점 좁히기</h2></div>
+<p class="goal"><strong>목표</strong> 인덱스가 없을 때와 있을 때의 실행 계획을 <code>PROFILE</code>로 비교합니다. 숫자는 환경마다 다르므로 직접 적어 가며 진행하세요.</p>
+<div class="code"><div class="code-top"><span>08-1 · 인덱스가 없는 상태에서 PROFILE</span><button class="copy" type="button">복사</button></div><pre class="cy">PROFILE
+MATCH (사람:사람 {이름:'김철수'})
+RETURN 사람.이름;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>결과 카드에서 실행 계획(Plan) 보기를 엽니다. 맨 아래 연산자가 **<code>NodeByLabelScan</code>**이고 그 위에 <code>Filter</code>가 있습니다. 사람 8명을 전부 훑은 뒤 이름을 비교했다는 뜻입니다. 맨 아래 연산자의 행 수(8)와 전체 DB Hits를 적어 두세요.</p></div>
+<div class="code"><div class="code-top"><span>08-2 · 인덱스 생성 — 노드 속성과 관계 속성</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE INDEX 사람_이름 IF NOT EXISTS
+  FOR (사람:사람) ON (사람.이름);
+CREATE INDEX 요리_연도 IF NOT EXISTS
+  FOR (요리:요리) ON (요리.등록연도);
+CREATE INDEX 재료_분량 IF NOT EXISTS
+  FOR ()-[관계:재료]-() ON (관계.분량);</pre></div>
+<div class="code"><div class="code-top"><span>08-3 · 목록과 상태 확인</span><button class="copy" type="button">복사</button></div><pre class="cy">SHOW INDEXES YIELD name, type, entityType, labelsOrTypes, properties, state
+RETURN name, type, entityType, labelsOrTypes, properties, state
+ORDER BY name;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p><code>사람_이름</code>, <code>요리_연도</code>(NODE), <code>재료_분량</code>(RELATIONSHIP)이 <code>RANGE</code> · <code>ONLINE</code>으로 보입니다. 제약조건이 만든 <code>요리_고유</code>도 RANGE 인덱스이고, 데이터베이스가 기본으로 가진 <code>LOOKUP</code> 인덱스 2개도 함께 나옵니다. <code>state</code>가 <code>POPULATING</code>이면 잠시 뒤 다시 확인하세요.</p></div>
+<div class="code"><div class="code-top"><span>08-4 · 같은 질의를 다시 PROFILE</span><button class="copy" type="button">복사</button></div><pre class="cy">PROFILE
+MATCH (사람:사람 {이름:'김철수'})
+RETURN 사람.이름;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>맨 아래 연산자가 **<code>NodeIndexSeek</code>**로 바뀌고 행 수가 1이 됩니다. 08-1에서 적은 DB Hits와 비교해 보세요. 사람이 8명일 때는 차이가 작지만, 100만 명이면 100만 번 비교와 1번 도달의 차이가 됩니다.</p></div>
+<div class="code"><div class="code-top"><span>08-5 · 범위 조건도 RANGE 인덱스를 쓴다</span><button class="copy" type="button">복사</button></div><pre class="cy">PROFILE
+MATCH (요리:요리)
+WHERE 요리.등록연도 &gt;= 2020
+RETURN 요리.요리명 AS 요리명, 요리.등록연도 AS 등록연도
+ORDER BY 등록연도;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>부대찌개 2020 · 된장찌개 2021 · 비빔밥 2022 · 라면 2023. 계획의 시작 연산자는 <code>NodeIndexSeekByRange</code>입니다.</p></div>
+<div class="code"><div class="code-top"><span>08-6 · 관계 속성 인덱스</span><button class="copy" type="button">복사</button></div><pre class="cy">PROFILE
+MATCH (출발)-[관계:재료]-&gt;(도착)
+WHERE 관계.분량 &gt;= 250
+RETURN coalesce(출발.요리명, 출발.이름) AS 출발, 도착.이름 AS 재료, 관계.분량 AS 분량
+ORDER BY 분량 DESC, 출발;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>김치찌개 → 김치 300 · 떡볶이 → 떡 300 · 김치 → 배추 250. 계획에 <code>DirectedRelationshipIndexSeekByRange</code>가 보이면 관계 인덱스에서 출발한 것입니다.</p></div>
+<div class="code"><div class="code-top"><span>08-7 · 부분 일치에는 TEXT 인덱스</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE TEXT INDEX 요리명_텍스트 IF NOT EXISTS
+  FOR (요리:요리) ON (요리.요리명);</pre></div>
+<div class="code"><div class="code-top"><span>08-8 · CONTAINS 질의</span><button class="copy" type="button">복사</button></div><pre class="cy">PROFILE
+MATCH (요리:요리)
+WHERE 요리.요리명 CONTAINS '찌개'
+RETURN 요리.요리명 AS 요리명 ORDER BY 요리명;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>김치찌개 · 된장찌개 · 부대찌개. 인덱스가 방금 만들어져 아직 <code>ONLINE</code>이 아니면 스캔으로 실행될 수 있습니다. 잠시 뒤 다시 실행해 <code>NodeIndexContainsScan</code>이 나오는지 확인하세요.</p></div>
+<div class="result"><span class="lab">인덱스의 다섯 종류</span><div class="tbl"><table><thead><tr><th>종류</th><th>용도</th><th>적용 연산</th><th>이번 실습</th></tr></thead><tbody><tr><td>Range</td><td>기본 인덱스, 값의 동등 · 범위 비교</td><td><code>=</code> <code>&gt;</code> <code>&lt;</code> <code>IN</code> <code>STARTS WITH</code></td><td>사람_이름, 요리_연도, 재료_분량</td></tr><tr><td>Text</td><td>문자열 부분 일치</td><td><code>CONTAINS</code> <code>ENDS WITH</code></td><td>요리명_텍스트</td></tr><tr><td>Point</td><td>공간 좌표</td><td>거리 · 영역 질의</td><td>(없음)</td></tr><tr><td>Full-text</td><td>분석기 기반 자연어 검색</td><td>키워드 검색, 점수화</td><td>10번 실습</td></tr><tr><td>Vector</td><td>임베딩 벡터 유사도</td><td>벡터 검색</td><td>10번 실습</td></tr></tbody></table></div></div>
+</section>
+
+<section class="step" id="s09" data-title="제약조건"><div class="step-head"><span class="step-no">STEP 09</span><h2>제약조건: 데이터 품질의 최소 방어선</h2></div>
+<p class="goal"><strong>목표</strong> 고유(Unique), 필수(Existence), 노드 키(Node Key) 제약조건을 만들고 잘못된 데이터가 저장 시점에 거부되는지 확인합니다.</p>
+<div class="code"><div class="code-top"><span>09-1 · 노드 키: (분류, 이름) 조합이 고유하고 둘 다 필수</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE CONSTRAINT 재료_키 IF NOT EXISTS
+  FOR (재료:재료) REQUIRE (재료.분류, 재료.이름) IS NODE KEY;</pre></div>
+<div class="code"><div class="code-top"><span>09-2 · 필수 속성</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE CONSTRAINT 사람_이름_필수 IF NOT EXISTS
+  FOR (사람:사람) REQUIRE 사람.이름 IS NOT NULL;</pre></div>
+<div class="code"><div class="code-top"><span>09-3 · 목록 확인</span><button class="copy" type="button">복사</button></div><pre class="cy">SHOW CONSTRAINTS YIELD name, type, labelsOrTypes, properties
+RETURN name, type, labelsOrTypes, properties
+ORDER BY name;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>3행: <code>사람_이름_필수</code>(존재), <code>요리_고유</code>(고유), <code>재료_키</code>(노드 키).</p></div>
+<div class="note"><b>에디션</b> 고유 제약조건은 Community 에디션부터 쓸 수 있고, 필수·노드 키 제약조건은 Enterprise 기능입니다. Aura는 Enterprise 기반이라 AuraDB Free에서도 실행되지만, Docker로 띄운 Community 이미지에서는 09-1과 09-2가 오류로 끝납니다. 그 경우 이 STEP의 09-4, 09-5, 09-7은 건너뛰세요.</div>
+<div class="code"><div class="code-top"><span>09-4 · 필수 속성 누락 (오류가 나는 것이 정상)</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE (:재료 {이름: '소금'});</pre></div>
+<div class="code"><div class="code-top"><span>09-5 · 조합 중복 (오류가 나는 것이 정상)</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE (:재료 {분류: '가공', 이름: '김치'});</pre></div>
+<div class="code"><div class="code-top"><span>09-6 · 고유 제약조건 위반 (오류가 나는 것이 정상)</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE (:요리 {요리명: '김치찌개'});</pre></div>
+<div class="code"><div class="code-top"><span>09-7 · 이름 없는 사람 (오류가 나는 것이 정상)</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE (:사람 {나이: 30});</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>네 블록 모두 거부되고 데이터는 바뀌지 않습니다. 속성이 빠진 09-4 · 09-7은 <code>22N77: … property presence verification failed</code>, 값이 겹치는 09-5 · 09-6은 <code>22N80: … index entry conflict</code> 오류입니다.</p></div>
+<div class="code"><div class="code-top"><span>09-8 · 조합이 다르면 통과</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE (재료:재료 {분류: '채소', 이름: '김치'})
+RETURN 재료.분류 AS 분류, 재료.이름 AS 이름;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>채소 · 김치 생성. 이름이 같아도 (분류, 이름) 조합이 다르면 허용됩니다. 확인 후 아래 블록으로 지웁니다.</p></div>
+<div class="code"><div class="code-top"><span>09-9 · 정리 (반드시 실행)</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (재료:재료 {분류: '채소', 이름: '김치'}) DELETE 재료;</pre></div>
+<div class="note"><b>적재 전에 제약조건을 먼저</b> ① <code>CREATE CONSTRAINT</code> → ② <code>MERGE</code> · <code>UNWIND</code> 적재 순서가 중복 노드를 막는 가장 확실한 방법입니다. 이번 실습에서는 비교를 위해 사람 라벨만 일부러 순서를 바꿨습니다.</div>
+</section>
+
+<section class="step" id="s10" data-title="실행 계획과 튜닝"><div class="step-head"><span class="step-no">STEP 10</span><h2>실행 계획 읽기와 튜닝 전후 비교</h2></div>
+<p class="goal"><strong>목표</strong> <code>EXPLAIN</code>과 <code>PROFILE</code>의 차이를 확인하고, 실행 계획을 아래에서 위로 읽은 다음, 개선 전 질의와 개선 후 질의의 DB Hits를 비교합니다.</p>
+<div class="code"><div class="code-top"><span>10-1 · EXPLAIN — 계획만 세우고 실행하지 않는다</span><button class="copy" type="button">복사</button></div><pre class="cy">EXPLAIN
+MATCH (n) DETACH DELETE n;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>계획만 표시되고 <b>데이터는 지워지지 않습니다.</b> <code>MATCH (n) RETURN count(n);</code>으로 28개가 그대로인지 확인하세요. 위험한 질의는 <code>EXPLAIN</code>으로 먼저 점검합니다. (<code>PROFILE</code>을 붙이면 실제로 실행되므로 절대 바꿔 실행하지 마세요.)</p></div>
+<div class="code"><div class="code-top"><span>10-2 · PROFILE — 실행하며 잰다</span><button class="copy" type="button">복사</button></div><pre class="cy">PROFILE
+MATCH (사람:사람 {이름:'김철수'})
+      -[:개발]-&gt;(요리:요리)
+RETURN 요리.요리명;</pre></div>
+<div class="result"><span class="lab">아래에서 위로 읽기</span><div class="tbl"><table><thead><tr><th>순서</th><th>연산자</th><th>하는 일</th><th>확인할 것</th></tr></thead><tbody><tr><td>5 (맨 위)</td><td><code>ProduceResults</code></td><td>결과 행을 만든다</td><td>3행</td></tr><tr><td>4</td><td><code>Projection</code></td><td>반환할 값(요리명)을 계산한다</td><td></td></tr><tr><td>3</td><td><code>Filter</code></td><td>도착 노드가 <code>:요리</code>인지 확인</td><td>확장 전에 걸 수 있는 조건인가</td></tr><tr><td>2</td><td><code>Expand(All)</code></td><td><code>-[:개발]-&gt;</code>을 따라 확장</td><td>행 수가 폭증하는 곳이 병목</td></tr><tr><td>1 (맨 아래)</td><td><code>NodeIndexSeek</code></td><td>인덱스로 김철수를 찾는다</td><td>Scan이면 위험 신호</td></tr></tbody></table></div><p>결과는 김치찌개 · 떡볶이 · 김치볶음밥. 버전에 따라 연산자 이름이 조금 다르거나 합쳐져 보일 수 있습니다. 연산자마다 표시되는 <b>행 수</b>와 <b>DB Hits</b>가 비용이 생기는 위치입니다.</p></div>
+<figure class="shot"><img src="img/l08_profile.jpg" alt="10-2 실행 결과의 Plan 보기(Text). 맨 아래 NodeIndexSeek에서 시작해 Expand(All) → Filter → Projection → ProduceResults 순으로 올라갑니다. Rows · DB Hits 열이 연산자별 비용입니다." loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span>10-2 실행 결과의 Plan 보기(Text). 맨 아래 <code>NodeIndexSeek</code>에서 시작해 <code>Expand(All)</code> → <code>Filter</code> → <code>Projection</code> → <code>ProduceResults</code> 순으로 올라갑니다. Rows · DB Hits 열이 연산자별 비용입니다.</figcaption></figure>
+<h3>개선 전후 비교</h3>
+<div class="body"><p>아래 블록을 순서대로 실행하고 표를 채우세요. 먼저 파라미터를 설정합니다.</p></div>
+<div class="code"><div class="code-top"><span>10-3 · 파라미터 설정</span><button class="copy" type="button">복사</button></div><pre class="cy">:param 이름 =&gt; '김철수'</pre></div>
+<div class="code"><div class="code-top"><span>10-4 · 개선 전 상태 만들기: 인덱스 제거</span><button class="copy" type="button">복사</button></div><pre class="cy">DROP INDEX 사람_이름 IF EXISTS;</pre></div>
+<div class="code"><div class="code-top"><span>10-5 · 개선 전 — 라벨 전체 스캔 후 필터, 깊이 6, 중간 결과 제한 없음</span><button class="copy" type="button">복사</button></div><pre class="cy">PROFILE
+MATCH (사람:사람)
+WHERE 사람.이름 = $이름
+MATCH (사람)-[:개발|좋아함*1..6]-(관련)
+RETURN count(관련);</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p><code>count(관련)</code> = <b>53</b>. 시작 연산자 <code>NodeByLabelScan</code>, 가변 길이 확장(<code>VarLengthExpand(All)</code>)에서 행 수가 53으로 늘어납니다. 전체 DB Hits를 적으세요(검증 환경에서는 159).</p></div>
+<div class="code"><div class="code-top"><span>10-6 · 인덱스 다시 생성</span><button class="copy" type="button">복사</button></div><pre class="cy">CREATE INDEX 사람_이름 IF NOT EXISTS
+  FOR (사람:사람) ON (사람.이름);</pre></div>
+<div class="code"><div class="code-top"><span>10-7 · 개선 후 — 인덱스 시크 + 깊이 축소 + 중간 결과 제한</span><button class="copy" type="button">복사</button></div><pre class="cy">PROFILE
+MATCH (사람:사람 {이름: $이름})
+MATCH (사람)-[:개발|좋아함*1..3]-(관련:사람)
+WITH DISTINCT 관련
+LIMIT 1000
+RETURN count(관련);</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p><code>count(관련)</code> = <b>3</b> (이영희 · 강민지 · 최지우). 시작 연산자 <code>NodeIndexSeek</code>. 전체 DB Hits를 적고 10-5와 비교하세요(검증 환경에서는 45).</p></div>
+<div class="result"><span class="lab">직접 채우는 비교표</span><div class="tbl"><table><thead><tr><th>측정 항목</th><th>개선 전 (10-5)</th><th>개선 후 (10-7)</th></tr></thead><tbody><tr><td>시작 연산자</td><td>NodeByLabelScan</td><td>NodeIndexSeek</td></tr><tr><td>탐색 깊이</td><td>6단계</td><td>3단계</td></tr><tr><td>확장 후 행 수</td><td>53</td><td>(직접 기록)</td></tr><tr><td>중간 결과</td><td>제한 없음</td><td>DISTINCT + LIMIT 1000</td></tr><tr><td>전체 DB Hits</td><td>(직접 기록, 검증 환경 159)</td><td>(직접 기록, 검증 환경 45)</td></tr></tbody></table></div></div>
+<div class="note"><b>조건을 WHERE에 쓰든 패턴 안에 쓰든</b> 인덱스가 있으면 플래너는 둘 다 <code>NodeIndexSeek</code>로 계획합니다. 10-5에서 스캔이 나온 이유는 조건의 위치가 아니라 인덱스가 없었기 때문입니다. 10-6을 실행한 뒤 10-5를 다시 실행해 시작 연산자가 바뀌는지 확인해 보세요. <code>:param</code>이 동작하지 않는 화면이라면 <code>$이름</code>을 <code>'김철수'</code>로 바꿔 실행합니다.</div>
+<div class="result"><span class="lab">튜닝 원칙 여섯 가지</span><div class="tbl"><table><thead><tr><th>원칙</th><th>내용</th><th>이번 실습</th></tr></thead><tbody><tr><td>① 시작점을 인덱스로 고정</td><td>라벨 + 고유 속성으로 최소 집합에서 출발</td><td>08-4, 10-7</td></tr><tr><td>② 카디널리티가 낮은 패턴부터</td><td>좁은 쪽에서 넓은 쪽으로 확장</td><td>김철수 1명 → 요리 → 사람</td></tr><tr><td>③ 조기 필터링</td><td>조건을 가능한 한 앞쪽 절로</td><td><code>(관련:사람)</code> 라벨 제한</td></tr><tr><td>④ 탐색 깊이 상한</td><td>가변 길이 경로에 반드시 최대값</td><td><code>*1..6</code> → <code>*1..3</code></td></tr><tr><td>⑤ 중간 결과 축소</td><td><code>WITH</code> · <code>ORDER BY</code> · <code>LIMIT</code></td><td><code>WITH DISTINCT … LIMIT</code></td></tr><tr><td>⑥ 파라미터 사용</td><td>실행 계획 캐시 재활용</td><td><code>$이름</code></td></tr></tbody></table></div></div>
+</section>
+
+<section class="step" id="s11" data-title="대량 갱신"><div class="step-head"><span class="step-no">STEP 11</span><h2>대량 갱신: 배치로 나눠 커밋</h2></div>
+<p class="goal"><strong>목표</strong> 한 트랜잭션에 모든 변경을 담으면 메모리가 부족해집니다. <code>CALL … IN TRANSACTIONS</code>로 일정 행마다 커밋합니다. 데이터가 8건뿐이라 배치 크기를 3으로 줄여 동작만 확인합니다.</p>
+<div class="code"><div class="code-top"><span>11-1 · 정규화이름 채우기 — 3행마다 커밋</span><button class="copy" type="button">복사</button></div><pre class="cy">:auto MATCH (사람:사람)
+WHERE 사람.정규화이름 IS NULL
+CALL (사람) {
+  SET 사람.정규화이름 = trim(사람.이름)
+} IN TRANSACTIONS OF 3 ROWS;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>속성 8개 설정. 8행이 3 · 3 · 2로 나뉘어 세 번 커밋됩니다.</p></div>
+<div class="note"><b>:auto</b> <code>IN TRANSACTIONS</code>는 질의가 스스로 트랜잭션을 여닫아야 해서, 화면이 미리 열어 둔 트랜잭션 안에서는 실행할 수 없습니다. 맨 앞의 <code>:auto</code>가 "자동 커밋으로 실행하라"는 화면 명령입니다. Aura Query 화면에서 <code>:auto</code>를 붙인 형태로 실행되는 것을 확인했습니다. 다른 도구에서 <code>:auto</code>를 인식하지 못한다는 오류가 나면 <code>:auto</code>를 지우고 <code>MATCH</code>부터 실행하세요.</div>
+<div class="code"><div class="code-top"><span>11-2 · 결과 확인</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (사람:사람)
+RETURN count(사람.정규화이름) AS 채워진수, count(*) AS 전체;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>8 · 8. 11-1을 다시 실행하면 <code>IS NULL</code>인 사람이 없어 아무것도 바뀌지 않습니다. 중간에 실패해도 처음부터 다시 실행하면 남은 것만 처리되는 구조입니다.</p></div>
+<div class="code"><div class="code-top"><span>11-3 · 실행 중인 트랜잭션 보기</span><button class="copy" type="button">복사</button></div><pre class="cy">SHOW TRANSACTIONS YIELD transactionId, currentQuery, elapsedTime
+RETURN transactionId, currentQuery, elapsedTime;</pre></div>
+<div class="result"><span class="lab">예상 결과</span><p>지금 실행한 <code>SHOW TRANSACTIONS</code> 자신이 한 행으로 보입니다. 오래 걸리는 배치 작업을 지켜보거나 멈춘 듯한 질의의 원인을 찾을 때 씁니다.</p></div>
+<div class="note"><b>배치 크기</b> 실무에서는 1만~5만 행 사이에서 조정합니다. 너무 작으면 커밋 횟수가 늘고, 너무 크면 메모리 부담이 커집니다.</div>
+</section>
+
+<section class="step" id="s12" data-title="연습문제"><div class="step-head"><span class="step-no">STEP 12</span><h2>연습문제</h2></div>
+<p class="goal"><strong>목표</strong> 지금까지 배운 구문을 조합해 직접 작성합니다. 먼저 풀어 보고 정답을 펼쳐 비교하세요.</p>
+<div class="body"><div class="ex"><p class="q"><span>Q1</span>강민지에게서 친구 관계로 2단계 이내에 있는 사람과 가장 가까운 단계를 조회하세요.</p><details class="answer"><summary>정답 보기</summary><div>
+<div class="code"><div class="code-top"><span>Q1 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH 경로 = (:사람 {이름: '강민지'})-[:친구*1..2]-(도착:사람)
+RETURN 도착.이름 AS 사람, min(length(경로)) AS 단계
+ORDER BY 단계, 사람;</pre></div>
+<div class="body"><p>박민수 1 · 이영희 1 · 최지우 1 · 김철수 2 · 정하늘 2</p></div>
+</div></details></div>
+<div class="ex"><p class="q"><span>Q2</span>김철수와 윤서준 사이를 <code>친구</code>, <code>개발</code>, <code>좋아함</code> 관계를 모두 써서 잇는 최단 경로는 몇 개이고 거리는 얼마입니까? 경로도 함께 출력하세요.</p><details class="answer"><summary>정답 보기</summary><div>
+<div class="code"><div class="code-top"><span>Q2 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (시작:사람 {이름: '김철수'}), (도착:사람 {이름: '윤서준'})
+MATCH 경로 = allShortestPaths((시작)-[:친구|개발|좋아함*..6]-(도착))
+RETURN [노드 IN nodes(경로) | coalesce(노드.이름, 노드.요리명)] AS 경로,
+       length(경로) AS 거리;</pre></div>
+<div class="body"><p>3개, 거리 4. [김철수, 박민수, 비빔밥, 정하늘, 윤서준] · [김철수, 된장찌개, 최지우, 정하늘, 윤서준] · [김철수, 된장찌개, 최지우, 라면, 윤서준]. 친구만 쓰면 5, 요리만 거치면 4였는데 섞어도 4입니다.</p></div>
+<figure class="shot"><img src="img/l08_path.jpg" alt="RETURN 경로;로 바꿔 실행한 Graph 보기. 세 최단 경로가 겹쳐 사람 5명 · 요리 3개 · 관계 9개로 표시됩니다." loading="lazy"><figcaption><span class="cap-tag">Aura 화면</span><code>RETURN 경로;</code>로 바꿔 실행한 Graph 보기. 세 최단 경로가 겹쳐 사람 5명 · 요리 3개 · 관계 9개로 표시됩니다.</figcaption></figure>
+</div></details></div>
+<div class="ex"><p class="q"><span>Q3</span>자기 친구가 개발한 요리를 좋아하는 사람을 <code>EXISTS</code>로 찾으세요.</p><details class="answer"><summary>정답 보기</summary><div>
+<div class="code"><div class="code-top"><span>Q3 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (사람:사람)
+WHERE EXISTS {
+  MATCH (사람)-[:좋아함]-&gt;(:요리)&lt;-[:개발]-(요리사:사람)
+  WHERE (사람)-[:친구]-(요리사)
+}
+RETURN 사람.이름 AS 이름 ORDER BY 이름;</pre></div>
+<div class="body"><p>김철수(친구 이영희의 된장찌개) · 이영희(친구 김철수의 김치찌개·떡볶이)</p></div>
+</div></details></div>
+<div class="ex"><p class="q"><span>Q4</span>종류별로 가장 오래전에 등록된 요리 1개씩을 <code>CALL</code> 서브쿼리로 구하세요.</p><details class="answer"><summary>정답 보기</summary><div>
+<div class="code"><div class="code-top"><span>Q4 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (종류:종류)
+CALL (종류) {
+  MATCH (종류)&lt;-[:분류]-(요리:요리)
+  RETURN 요리 ORDER BY 요리.등록연도 LIMIT 1
+}
+RETURN 종류.이름 AS 종류, 요리.요리명 AS 가장오래된요리, 요리.등록연도 AS 등록연도
+ORDER BY 종류;</pre></div>
+<div class="body"><p>분식 · 떡볶이 · 2003 / 퓨전 · 부대찌개 · 2020 / 한식 · 잡채 · 2012</p></div>
+</div></details></div>
+<div class="ex"><p class="q"><span>Q5</span>요리별로 직접 들어가는 재료의 분량 합계를 패턴 컴프리헨션과 <code>reduce</code>로 구하고, 합계가 0보다 큰 요리만 많은 순으로 출력하세요.</p><details class="answer"><summary>정답 보기</summary><div>
+<div class="code"><div class="code-top"><span>Q5 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (요리:요리)
+WITH 요리, [(요리)-[관계:재료]-&gt;(:재료) | 관계.분량] AS 분량들
+WITH 요리, reduce(합계 = 0, 분량 IN 분량들 | 합계 + 분량) AS 총분량
+WHERE 총분량 &gt; 0
+RETURN 요리.요리명 AS 요리명, 총분량
+ORDER BY 총분량 DESC;</pre></div>
+<div class="body"><p>김치찌개 450 · 떡볶이 360 · 김치볶음밥 350 · 된장찌개 250 · 비빔밥 230. 재료가 없는 잡채·라면·부대찌개는 빈 리스트라 합계가 0입니다.</p></div>
+</div></details></div>
+<div class="ex"><p class="q"><span>Q6</span><code>MATCH (요리:요리 {요리명:'비빔밥'})&lt;-[:좋아함]-(사람:사람) RETURN 사람.이름</code>을 PROFILE로 실행하고, 시작 연산자가 무엇인지, 왜 그런지 설명하세요.</p><details class="answer"><summary>정답 보기</summary><div>
+<div class="code"><div class="code-top"><span>Q6 정답</span><button class="copy" type="button">복사</button></div><pre class="cy">PROFILE
+MATCH (요리:요리 {요리명:'비빔밥'})&lt;-[:좋아함]-(사람:사람)
+RETURN 사람.이름;</pre></div>
+<div class="body"><p>결과는 정하늘. 시작 연산자는 <code>NodeUniqueIndexSeek</code>입니다. 고유 제약조건 <code>요리_고유</code>가 요리명에 인덱스를 함께 만들었기 때문에 별도의 <code>CREATE INDEX</code> 없이도 인덱스로 시작합니다.</p></div>
+</div></details></div>
+</div></section>
+
+<section class="step" id="s13" data-title="정리와 요약"><div class="step-head"><span class="step-no">STEP 13</span><h2>정리하기와 요약</h2></div>
+<p class="goal"><strong>목표</strong> 실습 데이터와 인덱스·제약조건을 지우고 오늘 쓴 구문을 정리합니다.</p>
+<div class="note warn"><b>되돌릴 수 없습니다</b> 13-1은 데이터베이스의 <b>모든</b> 노드와 관계를 지웁니다.</div>
+<div class="code"><div class="code-top"><span>13-1 · 전체 정리</span><button class="copy" type="button">복사</button></div><pre class="cy">MATCH (n) DETACH DELETE n;
+DROP CONSTRAINT 요리_고유 IF EXISTS;
+DROP CONSTRAINT 재료_키 IF EXISTS;
+DROP CONSTRAINT 사람_이름_필수 IF EXISTS;
+DROP INDEX 사람_이름 IF EXISTS;
+DROP INDEX 요리_연도 IF EXISTS;
+DROP INDEX 재료_분량 IF EXISTS;
+DROP INDEX 요리명_텍스트 IF EXISTS;</pre></div>
+<div class="result"><span class="lab">오늘 쓴 문법</span><div class="tbl"><table><thead><tr><th>구문</th><th>하는 일</th><th>실습 단계</th></tr></thead><tbody><tr><td><code>-[:타입*1..3]-</code></td><td>가변 길이 경로 (상한 필수)</td><td>02, 03</td></tr><tr><td><code>-[:A|B*2]-</code></td><td>여러 관계 타입, 정확한 단계</td><td>03</td></tr><tr><td><code>shortestPath</code> · <code>allShortestPaths</code></td><td>관계 수 기준 최단 경로</td><td>04</td></tr><tr><td><code>nodes()</code> · <code>relationships()</code> · <code>length()</code></td><td>경로 분해</td><td>05</td></tr><tr><td><code>reduce(누적 = 0, x IN 리스트 | …)</code></td><td>경로 위의 값 합산</td><td>05</td></tr><tr><td><code>UNWIND</code></td><td>리스트를 행으로</td><td>01, 06</td></tr><tr><td><code>CALL (변수) { … }</code></td><td>행마다 독립 실행, 그룹별 상위 N건</td><td>06</td></tr><tr><td><code>[패턴 WHERE 조건 | 값]</code></td><td>패턴 컴프리헨션</td><td>07</td></tr><tr><td><code>EXISTS { … }</code></td><td>존재 여부만 검사</td><td>07</td></tr><tr><td><code>CREATE INDEX</code> · <code>SHOW INDEXES</code></td><td>탐색 시작점 좁히기</td><td>08</td></tr><tr><td><code>CREATE CONSTRAINT</code> (UNIQUE · NOT NULL · NODE KEY)</td><td>저장 시점 품질 방어</td><td>09</td></tr><tr><td><code>EXPLAIN</code> · <code>PROFILE</code></td><td>실행 계획과 DB Hits</td><td>08, 10</td></tr><tr><td><code>CALL … IN TRANSACTIONS OF n ROWS</code></td><td>배치 커밋</td><td>11</td></tr></tbody></table></div></div>
+<div class="note"><b>핵심 한 줄</b> 튜닝의 대부분은 시작점을 얼마나 좁혔는가에서 결정됩니다. 새 질의를 쓸 때마다 <code>PROFILE</code>을 붙여 맨 아래 연산자가 Seek인지부터 확인하세요.</div>
+</section>
+
+</main>
+</div>
+
+<script>
+(function () {
+  var KW = new Set("MATCH OPTIONAL CREATE MERGE SET REMOVE DELETE DETACH RETURN WITH UNWIND WHERE AND OR NOT IN AS ORDER BY DESC ASC LIMIT SKIP ON CONSTRAINT IF EXISTS FOR REQUIRE IS UNIQUE SHOW YIELD DROP CASE WHEN THEN ELSE END NULL DISTINCT CALL STARTS ENDS CONTAINS TRUE FALSE CALL INDEX VECTOR FULLTEXT OPTIONS EXPLAIN PROFILE UNION ALL EACH TRANSACTIONS OF ROWS XOR SHORTEST ANY INDEXES CONSTRAINTS TEXT RANGE COUNT COLLECT LOAD CSV HEADERS FROM FOREACH".split(" "));
+  var FN = new Set("count collect avg sum min max round size labels type nodes relationships length shortestPath datetime coalesce toUpper toLower trim replace split date duration head last range reverse reduce toInteger toFloat toString keys properties elementId abs ceil floor allShortestPaths stDev exists startNode endNode id substring left right all any none single".split(" "));
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function span(c, s) { return '<span class="t-' + c + '">' + esc(s) + "</span>"; }
+  function hl(src) {
+    var re = /(\/\/[^\n]*)|('(?:[^'\\]|\\.)*')|(:[A-Z\uAC00-\uD7A3][A-Za-z_0-9\uAC00-\uD7A3]*)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+    var out = "", last = 0, m;
+    while ((m = re.exec(src))) {
+      out += esc(src.slice(last, m.index));
+      if (m[1]) out += span("c", m[1]);
+      else if (m[2]) out += span("s", m[2]);
+      else if (m[3]) out += span("l", m[3]);
+      else if (m[4]) out += span("n", m[4]);
+      else {
+        var w = m[5];
+        if (KW.has(w.toUpperCase()) && w === w.toUpperCase()) out += span("k", w);
+        else if (FN.has(w) && src.charAt(re.lastIndex) === "(") out += span("f", w);
+        else out += esc(w);
+      }
+      last = re.lastIndex;
+    }
+    return out + esc(src.slice(last));
+  }
+  document.querySelectorAll("pre.cy").forEach(function (pre) {
+    var raw = pre.textContent;
+    pre.dataset.raw = raw;
+    pre.innerHTML = hl(raw);
+  });
+  document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var pre = btn.closest(".code").querySelector("pre.cy");
+      var text = pre.dataset.raw;
+      function ok() { btn.textContent = "복사됨"; setTimeout(function () { btn.textContent = "복사"; }, 1400); }
+      function fallback() {
+        var r = document.createRange(); r.selectNodeContents(pre);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        btn.textContent = "Ctrl+C로 복사";
+        setTimeout(function () { btn.textContent = "복사"; }, 2200);
+      }
+      try {
+        navigator.clipboard.writeText(text).then(ok, fallback);
+      } catch (e) { fallback(); }
+    });
+  });
+
+  // progress
+  var KEY = "lab08-cypher-advanced-done";
+  var done = {};
+  try { done = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { done = {}; }
+  var steps = Array.prototype.slice.call(document.querySelectorAll("section.step"));
+  var list = document.getElementById("railList");
+  steps.forEach(function (sec, i) {
+    var li = document.createElement("li");
+    var a = document.createElement("a");
+    a.href = "#" + sec.id;
+    a.innerHTML = '<span class="no"><span>' + String(i).padStart(2, "0") + '</span></span><span class="t">' + sec.dataset.title + "</span>";
+    li.appendChild(a); list.appendChild(li);
+    var label = document.createElement("label");
+    label.className = "done-toggle";
+    label.innerHTML = '<input type="checkbox" id="done-' + sec.id + '"> 완료';
+    sec.querySelector(".step-head").appendChild(label);
+    var cb = label.querySelector("input");
+    cb.checked = !!done[sec.id];
+    cb.addEventListener("change", function () {
+      done[sec.id] = cb.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(done)); } catch (e) {}
+      render();
+    });
+    sec._link = a;
+  });
+  function render() {
+    var n = 0;
+    steps.forEach(function (sec) { var d = !!done[sec.id]; if (d) n++; sec._link.classList.toggle("done", d); });
+    document.getElementById("barFill").style.width = (n / steps.length * 100) + "%";
+    document.getElementById("progressText").textContent = n + " / " + steps.length + " 단계 완료";
+  }
+  render();
+})();
+</script>
+
+</body></html>
